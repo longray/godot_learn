@@ -55,6 +55,8 @@ $p = "D:\AboutGame\learn\2d_rpg_dungeon"
 - 无头测试中 `make_current()` 报 `!enabled || !is_inside_tree()` 属预期（节点不在树），RID 泄漏警告同理，均无害
 - MCP `project_run` 后 game helper 注册慢于 3 秒就绪窗口：等 ~10s 再轮询 `editor_state`，见 `helper_live=true` 才做按键/截图
 - `project_run` 会弹出游戏窗口——需提前告知用户**不要手动关窗**
+- **`game_eval` 运行时改节点属性后必须恢复原值**（改回再退出），否则下次 `project_run`（autosave 默认开）会把内存里的改动连同场景一起落盘 `.tscn`（已实测污染过 max_rooms=1）；同理用户在 Inspector 改参数保存也会持久化——验证前先查 `.tscn` 是否有属性覆盖
+- `project_manage` 的 `settings_set` 键必须带完整段路径（`application/run/main_scene` 而非 `run/main_scene`）；且引擎出于安全拒绝写启动场景键，只能手工改 `project.godot` + `scene_open(force_reload=true)` 让编辑器重载
 - 截图工具返回的图像当前模型不可读；运行时验证用 `game_eval` 读数据（如统计 grid 地板格数）代替
 - 教程代码 `dungeon_debug.gd:171-172` 有整数除法警告（`_room_center` 的 `size / 2`，取整是本意）——**有意保留**，勿修（C# 版整数除法无警告）
 - PowerShell 查询输出**不要用 `-Last N` 截断**环境类列表（曾因此误判运行时版本，选错 TFM 绕远路）
