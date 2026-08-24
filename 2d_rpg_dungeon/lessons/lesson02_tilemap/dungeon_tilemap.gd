@@ -33,6 +33,10 @@ extends Node2D
 # 然后手动设置 source id 和 atlas coords
 @export var tile_source_id: int = 0
 
+# 作业 5 方案 A：外部图集路径（非空且存在则优先加载，替代代码生成的纯色图集）
+# 图集布局：横向 4 格 [地板][墙壁][入口][出口]，每格 cell_size 大小
+@export var external_tiles_path: String = "res://assets/tiles/dungeon_tiles.png"
+
 @export var floor_atlas_coords: Vector2i = Vector2i(0, 0)
 @export var wall_atlas_coords: Vector2i = Vector2i(1, 0)
 @export var entrance_atlas_coords: Vector2i = Vector2i(2, 0)
@@ -378,7 +382,39 @@ func _setup_tilemap() -> void:
 
 
 func _create_placeholder_tileset() -> int:
-	# 生成一张横向小图集：
+	# 作业 5 方案 A：优先加载外部图集（像素风素材），文件缺失则回退代码生成
+	var texture: Texture2D
+
+	if external_tiles_path != "" and ResourceLoader.exists(external_tiles_path):
+		texture = load(external_tiles_path) as Texture2D
+	else:
+		texture = _generate_placeholder_texture()
+
+	var tile_set := TileSet.new()
+	tile_set.tile_size = Vector2i(cell_size, cell_size)
+
+	var source := TileSetAtlasSource.new()
+	source.texture = texture
+	source.texture_region_size = Vector2i(cell_size, cell_size)
+
+	var source_id := tile_set.add_source(source)
+
+	if source_id < 0:
+		push_error("创建 placeholder TileSet source 失败。")
+		return -1
+
+	source.create_tile(Vector2i(0, 0)) # floor
+	source.create_tile(Vector2i(1, 0)) # wall
+	source.create_tile(Vector2i(2, 0)) # entrance
+	source.create_tile(Vector2i(3, 0)) # exit
+
+	tile_layer.tile_set = tile_set
+
+	return source_id
+
+
+func _generate_placeholder_texture() -> Texture2D:
+	# 代码生成纯色图集（外部素材缺失时的回退路径）：
 	# [地板][墙壁][入口][出口]
 	var image := Image.create(cell_size * 4, cell_size, false, Image.FORMAT_RGBA8)
 
@@ -406,29 +442,7 @@ func _create_placeholder_tileset() -> int:
 		Color(0.90, 0.25, 0.25)
 	)
 
-	var texture := ImageTexture.create_from_image(image)
-
-	var tile_set := TileSet.new()
-	tile_set.tile_size = Vector2i(cell_size, cell_size)
-
-	var source := TileSetAtlasSource.new()
-	source.texture = texture
-	source.texture_region_size = Vector2i(cell_size, cell_size)
-
-	var source_id := tile_set.add_source(source)
-
-	if source_id < 0:
-		push_error("创建 placeholder TileSet source 失败。")
-		return -1
-
-	source.create_tile(Vector2i(0, 0)) # floor
-	source.create_tile(Vector2i(1, 0)) # wall
-	source.create_tile(Vector2i(2, 0)) # entrance
-	source.create_tile(Vector2i(3, 0)) # exit
-
-	tile_layer.tile_set = tile_set
-
-	return source_id
+	return ImageTexture.create_from_image(image)
 
 
 func _build_tilemap() -> void:
