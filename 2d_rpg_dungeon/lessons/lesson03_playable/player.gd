@@ -21,12 +21,12 @@ func _physics_process(delta: float) -> void:
 		move_and_slide()
 		return
 
-	# 使用 Godot 内建输入动作：ui_left / ui_right / ui_up / ui_down
+	# 作业 1：自定义动作 move_*（WASD + 方向键双绑定，Input Map 中配置）
 	var input_vector := Input.get_vector(
-		"ui_left",
-		"ui_right",
-		"ui_up",
-		"ui_down"
+		"move_left",
+		"move_right",
+		"move_up",
+		"move_down"
 	)
 
 	if input_vector == Vector2.ZERO:
