@@ -54,6 +54,9 @@ extends Node2D
 
 @onready var tile_layer: TileMapLayer = $TileMapLayer
 
+# 作业 3：路径可视化覆盖层（画在 TileMapLayer 之上）
+@onready var path_overlay: Node2D = $PathOverlay
+
 # ---------- 常量与数据 ----------
 
 const CELL_WALL := 0
@@ -114,6 +117,10 @@ func generate() -> void:
 	_update_or_spawn_player()
 	_spawn_markers()
 	_center_camera()
+
+	# 作业 3：把最终的入口→出口路径交给覆盖层绘制（修复后的最新路径）
+	if path_overlay:
+		path_overlay.set_path(astar_grid.get_id_path(entrance_cell, exit_cell), cell_size)
 
 	if debug_print_path:
 		print("入口：", entrance_cell, "  出口：", exit_cell)
