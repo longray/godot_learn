@@ -12,6 +12,3 @@ player_scene = ExtResource("3_player")
 
 [node name="TileMapLayer" type="TileMapLayer" parent="."]
 tile_set = ExtResource("2_tiles")
-
-[node name="Camera2D" type="Camera2D" parent="."]
-unique_name_in_owner = true

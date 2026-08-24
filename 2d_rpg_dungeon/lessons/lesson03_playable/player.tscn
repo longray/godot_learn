@@ -14,3 +14,7 @@ shape = SubResource("CircleShape2D_player")
 [node name="Polygon2D" type="Polygon2D" parent="."]
 color = Color(1, 0.85, 0.1, 1)
 polygon = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position_smoothing_enabled = true
+position_smoothing_speed = 8.0

@@ -641,6 +641,8 @@ func is_cell_walkable(cell: Vector2i) -> bool:
 # =========================
 
 func _center_camera() -> void:
+	# 作业 2 后：相机职责已转移给 Player 自带的 Camera2D（跟随玩家）。
+	# Main 场景已无 Camera2D 节点，此函数查找返回 null 自动跳过，保留以兼容旧场景。
 	var cam := get_node_or_null(^"Camera2D") as Camera2D
 	if cam == null:
 		return
