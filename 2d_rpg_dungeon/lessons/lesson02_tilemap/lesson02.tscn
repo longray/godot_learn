@@ -1,14 +1,27 @@
 [gd_scene format=3 uid="uid://bykrs64nfxw0l"]
 
 [ext_resource type="Script" uid="uid://ds8nakrb6amx4" path="res://lessons/lesson02_tilemap/dungeon_tilemap.gd" id="1_tilemap"]
-[ext_resource type="TileSet" uid="uid://cu7s624kw70bb" path="res://assets/tiles/dungeon_tiles.tres" id="2_vxiga"]
+[ext_resource type="Texture2D" uid="uid://cbl0mo4rjaxc6" path="res://assets/tiles/dungeon_tiles_ice.png" id="2_vxiga"]
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_6spf4"]
+texture = ExtResource("2_vxiga")
+0:0/0 = 0
+1:0/0 = 0
+2:0/0 = 0
+3:0/0 = 0
+
+[sub_resource type="TileSet" id="TileSet_obhcv"]
+sources/1 = SubResource("TileSetAtlasSource_6spf4")
 
 [node name="Main" type="Node2D" unique_id=1911809658]
 script = ExtResource("1_tilemap")
+use_random_seed = true
+tile_source_id = 1
 use_external_tiles = true
+external_tiles_path = ""
 
 [node name="TileMapLayer" type="TileMapLayer" parent="." unique_id=381037687]
-tile_set = ExtResource("2_vxiga")
+tile_set = SubResource("TileSet_obhcv")
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1868605365]
 unique_name_in_owner = true
