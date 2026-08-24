@@ -305,17 +305,38 @@ func _pick_entrance_and_exit() -> void:
 	# 入口：第一个房间中心
 	entrance_cell = _room_center(rooms[0])
 
-	# 出口：离入口最远的房间中心
+	# 作业 4：出口 = 从入口出发「实际路径」最长的房间中心
+	# 直线最远 ≠ 走路最远：走廊绕行时欧氏距离会骗人，用 AStarGrid2D 算真实路径
+	var astar := _build_astar_grid()
+
 	exit_cell = entrance_cell
-	var best_distance := -1
+	var best_path_len := -1
 
 	for room in rooms:
 		var center := _room_center(room)
-		var distance := entrance_cell.distance_squared_to(center)
+		var path := astar.get_id_path(entrance_cell, center)
 
-		if distance > best_distance:
-			best_distance = distance
+		if path.size() > best_path_len:
+			best_path_len = path.size()
 			exit_cell = center
+
+
+func _build_astar_grid() -> AStarGrid2D:
+	# 用 grid 数据构建寻路网格：默认全墙，地板格才可通行
+	var astar := AStarGrid2D.new()
+	astar.region = Rect2i(0, 0, map_width, map_height)
+	astar.cell_size = Vector2i(1, 1) # 直接用格子坐标作点 id
+	astar.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_NEVER # 四方向，符合走廊地牢移动语义
+	astar.update()
+
+	astar.fill_solid_region(astar.region, true)
+
+	for y in map_height:
+		for x in map_width:
+			if grid[y][x] == CELL_FLOOR:
+				astar.set_point_solid(Vector2i(x, y), false)
+
+	return astar
 
 
 func _random_cell_in_room(room: Rect2i) -> Vector2i:
