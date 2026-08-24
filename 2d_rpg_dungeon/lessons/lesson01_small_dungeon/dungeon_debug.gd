@@ -149,21 +149,29 @@ func _connect_rooms() -> void:
 	if rooms.size() < 2:
 		return
 
-	# 简单方案：按房间生成顺序连接
-	# 后续课程可以改成：
-	# - 连接最近房间
-	# - 用最小生成树连接
-	# - 用 Delaunay + MST 生成更自然的路径
-	for i in range(rooms.size() - 1):
-		var a := _room_center(rooms[i])
-		var b := _room_center(rooms[i + 1])
+	# 作业 5：增量式最近邻连接
+	# 每个新房间只连到「已入住房间」中离它最近的一个
+	# 总连接数仍是 n-1（保证连通），但每次连接局部最优，走廊大幅缩短
+	# 注意：distance_squared_to 不开根号——比大小结果相同，省 sqrt
+	for i in range(1, rooms.size()):
+		var from := _room_center(rooms[i])
+		var best_j := 0
+		var best_dist := from.distance_squared_to(_room_center(rooms[0]))
+
+		for j in range(1, i):
+			var d := from.distance_squared_to(_room_center(rooms[j]))
+			if d < best_dist:
+				best_dist = d
+				best_j = j
+
+		var b := _room_center(rooms[best_j])
 
 		if rng.randf() < 0.5:
-			_carve_h_corridor(a.x, b.x, a.y)
-			_carve_v_corridor(a.y, b.y, b.x)
+			_carve_h_corridor(from.x, b.x, from.y)
+			_carve_v_corridor(from.y, b.y, b.x)
 		else:
-			_carve_v_corridor(a.y, b.y, a.x)
-			_carve_h_corridor(a.x, b.x, b.y)
+			_carve_v_corridor(from.y, b.y, from.x)
+			_carve_h_corridor(from.x, b.x, b.y)
 
 
 func _room_center(room: Rect2i) -> Vector2i:
