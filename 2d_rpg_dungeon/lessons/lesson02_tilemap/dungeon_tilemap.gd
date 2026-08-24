@@ -92,6 +92,35 @@ func generate() -> void:
 	_build_tilemap()
 
 	_center_camera()
+	_spawn_markers()
+
+
+# =========================
+# 入口 / 出口标记（作业 1+2）
+# =========================
+
+func _spawn_markers() -> void:
+	# 重新生成前先清理旧标记，否则每按一次 R 就多一对（queue_free 帧末生效，帧内短暂共存无害）
+	_clear_markers()
+
+	var entrance_marker := Marker2D.new()
+	entrance_marker.name = "EntranceMarker"
+	entrance_marker.position = get_entrance_local_position()
+	add_child(entrance_marker)
+
+	var exit_marker := Marker2D.new()
+	exit_marker.name = "ExitMarker"
+	exit_marker.position = get_exit_local_position()
+	add_child(exit_marker)
+
+
+func _clear_markers() -> void:
+	for child in get_children():
+		if child is Marker2D:
+			# 先脱离树再延迟释放：remove_child 立即解除名字占用，
+			# 否则同帧 spawn 的同名新节点会被 Godot 改成匿名节点（@Marker2D@2），引用会断
+			remove_child(child)
+			child.queue_free()
 
 
 # =========================
