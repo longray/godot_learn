@@ -1,11 +1,11 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://bykrs64nfxw0l"]
 
-[ext_resource type="Script" path="res://lessons/lesson02_tilemap/dungeon_tilemap.gd" id="1_tilemap"]
+[ext_resource type="Script" uid="uid://ds8nakrb6amx4" path="res://lessons/lesson02_tilemap/dungeon_tilemap.gd" id="1_tilemap"]
 
-[node name="Main" type="Node2D"]
+[node name="Main" type="Node2D" unique_id=1911809658]
 script = ExtResource("1_tilemap")
 
-[node name="TileMapLayer" type="TileMapLayer" parent="."]
+[node name="TileMapLayer" type="TileMapLayer" parent="." unique_id=381037687]
 
-[node name="Camera2D" type="Camera2D" parent="."]
+[node name="Camera2D" type="Camera2D" parent="." unique_id=1868605365]
 unique_name_in_owner = true
