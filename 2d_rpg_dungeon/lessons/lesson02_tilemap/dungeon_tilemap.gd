@@ -290,6 +290,18 @@ func _pick_entrance_and_exit() -> void:
 		_set_cell(entrance_cell.x, entrance_cell.y, CELL_FLOOR)
 		return
 
+	# 作业 3：单房间时在房间内随机选两个不同格子，避免入口=出口
+	if rooms.size() == 1:
+		var room: Rect2i = rooms[0]
+		entrance_cell = _random_cell_in_room(room)
+		exit_cell = _random_cell_in_room(room)
+		# 房间内格子有限，理论上可能重合——最多重试几次拉开
+		var retries := 0
+		while exit_cell == entrance_cell and retries < 8:
+			exit_cell = _random_cell_in_room(room)
+			retries += 1
+		return
+
 	# 入口：第一个房间中心
 	entrance_cell = _room_center(rooms[0])
 
@@ -304,6 +316,14 @@ func _pick_entrance_and_exit() -> void:
 		if distance > best_distance:
 			best_distance = distance
 			exit_cell = center
+
+
+func _random_cell_in_room(room: Rect2i) -> Vector2i:
+	# 在房间矩形内均匀随机取一格（含边界）
+	return Vector2i(
+		rng.randi_range(room.position.x, room.position.x + room.size.x - 1),
+		rng.randi_range(room.position.y, room.position.y + room.size.y - 1)
+	)
 
 
 func get_entrance_local_position() -> Vector2:
