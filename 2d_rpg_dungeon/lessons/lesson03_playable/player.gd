@@ -6,6 +6,9 @@ extends CharacterBody2D
 # =========================
 
 @export var speed: float = 140.0
+
+# 碰撞采样半径刻意小于视觉半径（8px）：
+# 视觉饱满 + 碰撞宽松是经典手感设计，也避免 16px 走廊里大采样半径卡死
 @export var collision_radius: float = 5.0
 
 # 由 Main 场景注入
