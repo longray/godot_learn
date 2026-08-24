@@ -1,0 +1,53 @@
+# AGENTS.md — Godot 学习仓库
+
+用**简体中文**交流与思考（思考也必须用中文，节省用户 token）。
+
+## 仓库性质
+
+Godot 4.7 程序化 RPG 地图生成的**学习仓库**（非 git 仓库，无 pnpm/CI/测试框架——`D:\AGENTS.md` 的 TS 规则在此不适用）。
+
+```text
+doc/lession/          课程文档（用户逐课提供，先审核再执行）
+2d_rpg_dungeon/       GDScript 项目（当前活跃，含 addons/godot_ai MCP 插件）
+2d_rpg_dungeon.NET/   C# 版（空，留给 mono 迁移对比，勿动）
+```
+
+## 引擎（两套，勿混用）
+
+- 默认：`D:\Godot_v4.7.1-stable`（GDScript 版）
+- 迁移阶段才用：`D:\Godot_v4.7.1-stable_mono`（届时用 C# 重写课程代码，对比双版本开发/调试体验）
+
+## 核心约定
+
+- **Godot 操作一律优先用 godot-ai MCP**（node/script/scene/project_run 等工具），用户强制要求；纯批量任务（如参数扫描）才用无头命令行
+- 课程循环：审核文档 → 建文件 → 无头验证 → 用户运行确认 → 作业**一次只做 1~2 个**、展示 diff 讲解
+- 临时验证脚本（`tmp_*.gd`）用后必须删除，不得修改 `addons/` 与 `addons` 之外的既有逻辑除非作业要求
+
+## 无头验证（必须用 `_console.exe`，GUI 版在 Windows 无控制台输出）
+
+```powershell
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;  # 每条命令都要（Godot 输出含中文）
+$g = "D:\Godot_v4.7.1-stable\Godot_v4.7.1-stable_win64_console.exe"
+$p = "D:\AboutGame\learn\2d_rpg_dungeon"
+& $g --headless --path $p --import                                   # 1. 导入（生成 .godot/）
+& $g --headless --path $p --check-only --script "res://xxx.gd"       # 2. 语法检查（exit 0 = 过）
+& $g --headless --path $p --quit-after 10                            # 3. 冒烟运行（任何 SCRIPT ERROR = 失败）
+```
+
+## GDScript/.tscn 硬格式（错了直接解析失败）
+
+- `.gd` 缩进**只能用 TAB**，UTF-8 无 BOM（注释含中文）
+- 手写 `.tscn` 时：脚本引用用 `[ext_resource type="Script" path="res://..." id="..."]`；若脚本用 `^"NodeName"` 查找节点，该节点必须有 `unique_name_in_owner = true`
+
+## 已踩过的坑（验证过的事实）
+
+- 无头 `-s` 脚本里 `add_child()` 后 `_ready()` **不会立即触发**（消息队列未刷新即 `quit()`）——测试要直接调 `generate()` 等方法，勿依赖 `_ready`
+- 无头测试中 `make_current()` 报 `!enabled || !is_inside_tree()` 属预期（节点不在树），RID 泄漏警告同理，均无害
+- MCP `project_run` 后 game helper 注册慢于 3 秒就绪窗口：等 ~10s 再轮询 `editor_state`，见 `helper_live=true` 才做按键/截图
+- `project_run` 会弹出游戏窗口——需提前告知用户**不要手动关窗**
+- 截图工具返回的图像当前模型不可读；运行时验证用 `game_eval` 读数据（如统计 grid 地板格数）代替
+- 教程代码 `dungeon_debug.gd:171-172` 有整数除法警告（`_room_center` 的 `size / 2`，取整是本意）——**有意保留**，勿修
+
+## 课程语境
+
+第 1 课（`lessons/lesson01_small_dungeon/`）已完成：随机房间 + L 走廊 + 固定种子 + `_draw()` 可视化。种子复现性 = RNG 状态机原理（同种子 + 同调用顺序 = 同地图）。后续课程见 `doc/lession/`。

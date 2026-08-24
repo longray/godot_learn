@@ -1,0 +1,9 @@
+[gd_scene format=3 uid="uid://6osdw6vsqdnp"]
+
+[ext_resource type="Script" uid="uid://yqrhlpspbgad" path="res://lessons/lesson01_small_dungeon/dungeon_debug.gd" id="1_dungeon"]
+
+[node name="Main" type="Node2D" unique_id=1031512937]
+script = ExtResource("1_dungeon")
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=574689482]
+unique_name_in_owner = true

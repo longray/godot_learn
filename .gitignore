@@ -1,0 +1,6 @@
+# Godot 4 生成缓存（导入产物，不提交）
+.godot/
+*.tmp
+
+# OpenCode codegraph 本地索引
+.codegraph/
