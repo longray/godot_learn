@@ -1,0 +1,20 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+
+config_version=5
+
+[application]
+
+config/name="2D RPG Dungeon (C#)"
+config/features=PackedStringArray("4.7", "GL Compatibility", "C#")
+run/main_scene="res://lessons/lesson01_small_dungeon/lesson01.tscn"
+
+[dotnet]
+
+project/assembly_name="2d_rpg_dungeon.NET"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
