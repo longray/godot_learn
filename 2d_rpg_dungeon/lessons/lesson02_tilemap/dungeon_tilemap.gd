@@ -33,6 +33,10 @@ extends Node2D
 # 然后手动设置 source id 和 atlas coords
 @export var tile_source_id: int = 0
 
+# 作业 5 方案 B：如果 TileMapLayer 上已有手工配置的 TileSet（如编辑器里装配的），
+# 设为 true 尊重手工配置，跳过脚本的 placeholder/外部图集加载逻辑
+@export var use_external_tiles: bool = false
+
 # 作业 5 方案 A：外部图集路径（非空且存在则优先加载，替代代码生成的纯色图集）
 # 图集布局：横向 4 格 [地板][墙壁][入口][出口]，每格 cell_size 大小
 @export var external_tiles_path: String = "res://assets/tiles/dungeon_tiles.png"
@@ -368,6 +372,12 @@ func _cell_to_center_local(cell: Vector2i) -> Vector2:
 # =========================
 
 func _setup_tilemap() -> void:
+	if use_external_tiles:
+		# 方案 B：尊重手工配置的 TileSet，脚本不碰 tile_set
+		if tile_layer.tile_set == null:
+			push_warning("use_external_tiles 开着，但 TileMapLayer 上没有手工 TileSet。")
+		return
+
 	if use_placeholder_tileset:
 		tile_source_id = _create_placeholder_tileset()
 
