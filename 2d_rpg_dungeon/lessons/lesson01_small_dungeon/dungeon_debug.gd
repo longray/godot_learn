@@ -249,3 +249,15 @@ func _draw() -> void:
 			center.y * cell_size + cell_size * 0.5
 		)
 		draw_circle(pos, 3.0, Color(1.0, 0.3, 0.3))
+
+	# 作业 4：显示房间编号（按生成顺序，观察 1→2→3 的链式连接路径）
+	# draw_string 的 pos 是文本【基线】左端点：数字底贴基线、字形在基线上方约 7px
+	# 所以基线 y 要放到圆心下方 +4（≈半个字形高）才是垂直居中；x +4 = 圆半径 3 + 1px 间隙
+	var font := ThemeDB.fallback_font
+	for i in rooms.size():
+		var center := _room_center(rooms[i])
+		var pos := Vector2(
+			center.x * cell_size + cell_size * 0.5 + 4.0,
+			center.y * cell_size + cell_size * 0.5 + 4.0
+		)
+		draw_string(font, pos, str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(0.0, 0.0, 0.0))
