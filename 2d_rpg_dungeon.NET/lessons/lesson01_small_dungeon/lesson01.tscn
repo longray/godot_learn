@@ -1,9 +1,10 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://dt0h5sy1wog44"]
 
-[ext_resource type="Script" path="res://lessons/lesson01_small_dungeon/DungeonDebug.cs" id="1_dungeon"]
+[ext_resource type="Script" uid="uid://d4d0fi5tmmp67" path="res://lessons/lesson01_small_dungeon/DungeonDebug.cs" id="1_dungeon"]
 
-[node name="Main" type="Node2D"]
+[node name="Main" type="Node2D" unique_id=970769714]
 script = ExtResource("1_dungeon")
+UseRandomSeed = true
 
-[node name="Camera2D" type="Camera2D" parent="."]
+[node name="Camera2D" type="Camera2D" parent="." unique_id=735326934]
 unique_name_in_owner = true
