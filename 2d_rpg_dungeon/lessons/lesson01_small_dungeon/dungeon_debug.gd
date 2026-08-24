@@ -239,3 +239,13 @@ func _draw() -> void:
 		)
 
 		draw_rect(rect, Color(0.2, 1.0, 0.5, 0.25), false, 2.0)
+
+	# 作业 3：给每个房间中心画红色小圆点
+	# 这些点未来会变成：怪物刷新点 / 玩家出生点 / 宝箱点 / 楼梯点
+	for room in rooms:
+		var center := _room_center(room)
+		var pos := Vector2(
+			center.x * cell_size + cell_size * 0.5,
+			center.y * cell_size + cell_size * 0.5
+		)
+		draw_circle(pos, 3.0, Color(1.0, 0.3, 0.3))
