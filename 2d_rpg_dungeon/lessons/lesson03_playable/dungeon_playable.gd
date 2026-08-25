@@ -118,6 +118,7 @@ var dynamic_entities: Array[Node] = []
 
 # HUD 引用（场景里的 CanvasLayer > Label）
 @onready var key_label: Label = $HUD/KeyLabel
+@onready var treasure_label: Label = $HUD/TreasureLabel
 
 
 func _ready() -> void:
@@ -890,6 +891,7 @@ func _on_treasure_body_entered(body: Node2D, area: Area2D) -> void:
 
 	print("打开宝箱，当前宝箱数：", treasure_count)
 
+	_update_hud()
 	_remove_entity(area)
 
 
@@ -918,6 +920,7 @@ func _remove_entity(entity: Node) -> void:
 
 
 func _update_hud(locked_hint: bool = false) -> void:
+	# 作业 1：钥匙状态行
 	if key_label == null:
 		return
 
@@ -925,11 +928,16 @@ func _update_hud(locked_hint: bool = false) -> void:
 		key_label.text = "钥匙：已获得 ✓ 出口已解锁"
 		key_label.add_theme_color_override("font_color", Color(0.5, 1.0, 0.6))
 	elif locked_hint:
-		key_label.text = "出口被锁住了！去寻找金色钥匙…"
+		key_label.text = "出口被锁住了！去寻找金钥匙…"
 		key_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.4))
 	else:
 		key_label.text = "钥匙：未获得（找金钥匙）"
 		key_label.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0))
+
+	# 作业 1：宝箱计数行（已开 / 总数；宝箱拾取后不回收格子，总数稳定）
+	if treasure_label != null:
+		treasure_label.text = "宝箱：%d/%d" % [treasure_count, treasure_cells.size()]
+		treasure_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4))
 
 
 # =========================
