@@ -34,6 +34,27 @@ const FRAME_SEQ := [0, 1, 2, 1]
 var _anim_t := 0.0
 
 @onready var sprite: Sprite2D = $Sprite2D
+@onready var camera: Camera2D = $Camera2D
+
+# 滚轮缩放：步长与范围（默认 zoom=2，观察影子可拉到很近）
+const ZOOM_STEP := 0.25
+const ZOOM_MIN := 0.75
+const ZOOM_MAX := 6.0
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	# 滚轮推近/拉远（观察用）：上=推近，下=拉远
+	if event is InputEventMouseButton and event.pressed:
+		match event.button_index:
+			MOUSE_BUTTON_WHEEL_UP:
+				_zoom_camera(1.0)
+			MOUSE_BUTTON_WHEEL_DOWN:
+				_zoom_camera(-1.0)
+
+
+func _zoom_camera(direction: float) -> void:
+	var z: float = clampf(camera.zoom.x + direction * ZOOM_STEP, ZOOM_MIN, ZOOM_MAX)
+	camera.zoom = Vector2(z, z)
 
 
 func _update_sprite_animation(input_vector: Vector2, delta: float) -> void:
