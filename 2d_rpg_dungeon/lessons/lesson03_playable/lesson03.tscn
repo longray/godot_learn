@@ -1,5 +1,6 @@
 [gd_scene load_steps=5 format=3]
 
+
 [ext_resource type="Script" path="res://lessons/lesson03_playable/dungeon_playable.gd" id="1_main"]
 [ext_resource type="TileSet" path="res://assets/tiles/dungeon_tiles.tres" id="2_tiles"]
 [ext_resource type="PackedScene" path="res://lessons/lesson03_playable/player.tscn" id="3_player"]
@@ -16,3 +17,13 @@ tile_set = ExtResource("2_tiles")
 
 [node name="PathOverlay" type="Node2D" parent="."]
 script = ExtResource("4_overlay")
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="KeyLabel" type="Label" parent="HUD"]
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 500.0
+offset_bottom = 44.0
+theme_override_font_sizes/font_size = 18
+text = "钥匙：未获得"

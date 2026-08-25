@@ -79,6 +79,13 @@ var astar_grid := AStarGrid2D.new()
 var player_instance: CharacterBody2D
 var exit_area: Area2D
 
+# 作业 4：钥匙门状态
+var has_key := false
+var key_area: Area2D
+
+# HUD 引用（场景里的 CanvasLayer > Label）
+@onready var key_label: Label = $HUD/KeyLabel
+
 
 func _ready() -> void:
 	if tile_layer == null:
@@ -121,6 +128,11 @@ func generate() -> void:
 	# 作业 3：把最终的入口→出口路径交给覆盖层绘制（修复后的最新路径）
 	if path_overlay:
 		path_overlay.set_path(astar_grid.get_id_path(entrance_cell, exit_cell), cell_size)
+
+	# 作业 4：每层重新放钥匙 + 重置钥匙状态（放最后，避免影响既有 RNG 锚点）
+	has_key = false
+	_update_or_spawn_key()
+	_update_hud()
 
 	if debug_print_path:
 		print("入口：", entrance_cell, "  出口：", exit_cell)
@@ -537,9 +549,108 @@ func _update_or_spawn_exit() -> void:
 
 func _on_exit_body_entered(body: Node2D) -> void:
 	if body.is_in_group("player"):
+		# 作业 4：门控——没钥匙进不了出口
+		if not has_key:
+			print("出口被锁住了，需要钥匙！")
+			_update_hud(true)
+			return
+
 		print("玩家到达出口，重新生成地牢。")
 		# 物理回调中不能直接改场景树，延迟到帧末安全执行
 		call_deferred("generate")
+
+
+# =========================
+# 钥匙（作业 4）
+# =========================
+
+func _update_or_spawn_key() -> void:
+	if tile_layer == null:
+		return
+
+	# 删旧钥匙（remove_child 先解除树，防同帧匿名坑）
+	if key_area != null and is_instance_valid(key_area):
+		tile_layer.remove_child(key_area)
+		key_area.queue_free()
+
+	var key_cell := _pick_key_cell()
+
+	key_area = Area2D.new()
+	key_area.name = "KeyArea"
+	key_area.monitoring = true
+
+	var collision := CollisionShape2D.new()
+	var circle := CircleShape2D.new()
+	circle.radius = cell_size * 0.45
+	collision.shape = circle
+	key_area.add_child(collision)
+
+	# 金色菱形可视化（比玩家小一号）
+	var visual := Polygon2D.new()
+	var diamond: PackedVector2Array = [
+		Vector2(0, -6), Vector2(5, 0), Vector2(0, 6), Vector2(-5, 0)
+	]
+	visual.polygon = diamond
+	visual.color = Color(1.0, 0.8, 0.0)
+	key_area.add_child(visual)
+
+	key_area.body_entered.connect(_on_key_body_entered)
+
+	tile_layer.add_child(key_area)
+	key_area.position = _cell_to_center_local(key_cell)
+
+
+func _pick_key_cell() -> Vector2i:
+	# 钥匙优先放「既非入口也非出口」的房间 → 强制玩家绕支路探索
+	if rooms.is_empty():
+		return entrance_cell
+
+	# 找出口所在房间
+	var exit_room_idx := -1
+	for i in rooms.size():
+		if _room_center(rooms[i]) == exit_cell:
+			exit_room_idx = i
+			break
+
+	# 候选：非入口(0)、非出口的房间
+	var candidates: Array = []
+	for i in range(1, rooms.size()):
+		if i != exit_room_idx:
+			candidates.append(i)
+
+	if candidates.is_empty():
+		# 只有入口+出口两个房间：钥匙放出口房间内（避开出口格）
+		if exit_room_idx >= 0:
+			return _pick_random_floor_cell_in_room(rooms[exit_room_idx], exit_cell)
+		return _pick_random_floor_cell_in_room(rooms[0], entrance_cell)
+
+	var room_idx: int = candidates[rng.randi_range(0, candidates.size() - 1)]
+	return _room_center(rooms[room_idx])
+
+
+func _on_key_body_entered(body: Node2D) -> void:
+	if body.is_in_group("player") and not has_key:
+		has_key = true
+		print("获得钥匙！出口已解锁。")
+		# 拾取后钥匙消失；monitoring 属物理状态，物理回调中必须 set_deferred
+		key_area.set_deferred("monitoring", false)
+		key_area.visible = false
+		_update_hud()
+
+
+func _update_hud(locked_hint: bool = false) -> void:
+	if key_label == null:
+		return
+
+	if has_key:
+		key_label.text = "钥匙：已获得 ✓ 出口已解锁"
+		key_label.add_theme_color_override("font_color", Color(0.5, 1.0, 0.6))
+	elif locked_hint:
+		key_label.text = "出口被锁住了！去寻找金色钥匙…"
+		key_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.4))
+	else:
+		key_label.text = "钥匙：未获得（找金色菱形）"
+		key_label.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0))
 
 
 # =========================
