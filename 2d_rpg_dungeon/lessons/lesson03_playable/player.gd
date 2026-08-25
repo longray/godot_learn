@@ -252,17 +252,23 @@ func _attack() -> void:
 	collision.shape = circle
 	hitbox.add_child(collision)
 
-	# 攻击可视化（作业 2 可升级为扇形/旋转）
+	# 攻击可视化（作业 2：朝向扇形——圆心在玩家、顶点指向攻击方向）
 	var visual := Polygon2D.new()
-	var size := attack_radius * 0.8
+	var r := attack_radius
+	var half_arc := deg_to_rad(60.0)  # ±60° 扇形
 
 	visual.polygon = PackedVector2Array([
-		Vector2(-size, -size),
-		Vector2(size, -size),
-		Vector2(size, size),
-		Vector2(-size, size)
+		Vector2.ZERO,  # 圆心（相对 hitbox）
+		Vector2(r, 0).rotated(-half_arc),
+		Vector2(r, 0).rotated(-half_arc * 0.5),
+		Vector2(r, 0),
+		Vector2(r, 0).rotated(half_arc * 0.5),
+		Vector2(r, 0).rotated(half_arc),
 	])
 
+	# 扇形默认朝 +X 绘制，旋转到实际朝向；圆心回移 offset 使扇形从脚下展开
+	visual.rotation = facing.angle()
+	visual.position = -facing * attack_offset
 	visual.color = Color(1.0, 1.0, 1.0, 0.35)
 	hitbox.add_child(visual)
 

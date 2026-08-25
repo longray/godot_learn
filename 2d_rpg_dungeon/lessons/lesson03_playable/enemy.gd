@@ -26,6 +26,16 @@ extends CharacterBody2D
 # 第 6 课：生命（作业 4（第 5 课）补完——敌人可被攻击消灭）
 @export var max_health: int = 2
 
+# 作业 3（第 6 课）：敌人类型（normal/fast/tank——setup 时按类型重塑属性与配色）
+@export var enemy_type: String = "normal"
+
+# 类型配色（Sprite2D modulate 基色；受击/追击时在此基础上叠加）
+const TYPE_COLOR := {
+	"normal": Color.WHITE,
+	"fast": Color(0.75, 0.85, 1.0),   # 偏蓝（敏捷）
+	"tank": Color(1.0, 0.78, 0.55),   # 偏橙（厚重）
+}
+
 var chase_speed: float = 0.0
 
 var dungeon: Node
@@ -74,15 +84,16 @@ func _process(delta: float) -> void:
 	var s := 1.0 + amp * sin(_t * 3.0)
 	sprite.scale = Vector2(s, s)
 
-	# modulate 三态协调（优先级：受击红 > 追击粉 > 正常白）
+	# modulate 三态协调（优先级：受击红 > 追击粉 > 类型基色）
 	# 踩坑：不能在受击回调里直接赋 modulate——本函数每帧覆盖会立刻冲掉闪烁
+	var base_color: Color = TYPE_COLOR.get(enemy_type, Color.WHITE)
 	if _flash_t > 0.0:
 		_flash_t -= delta
 		sprite.modulate = Color(1.0, 0.35, 0.35)
 	elif is_chasing:
 		sprite.modulate = Color(1.0, 0.6, 0.6)
 	else:
-		sprite.modulate = Color.WHITE
+		sprite.modulate = base_color
 
 	# 张望：等待中偶尔左右瞥一眼（身体微偏移模拟探头）
 	if _look_t > 0.0:
@@ -118,6 +129,9 @@ func setup(dungeon_reference: Node, points: Array) -> void:
 	dead = false
 	_flash_t = 0.0
 
+	# 作业 3：按类型重塑（在速度个体差异之前应用基础模板）
+	_apply_type_template()
+
 	# 速度个体差异 ±15%（运行期随机：每次玩都不同，群体不齐步）
 	speed *= randf_range(0.85, 1.15)
 	chase_speed = speed * chase_speed_multiplier
@@ -140,6 +154,26 @@ func setup(dungeon_reference: Node, points: Array) -> void:
 
 	is_waiting = false
 	wait_remaining = 0.0
+
+
+func _apply_type_template() -> void:
+	# 作业 3：类型模板（个体差异/巡逻参数等后续修改叠加其上）
+	match enemy_type:
+		"fast":
+			speed = 110.0
+			max_health = 1
+			contact_damage = 1
+			chase_radius = 100.0
+		"tank":
+			speed = 45.0
+			max_health = 4
+			contact_damage = 2
+			chase_radius = 70.0
+		_:
+			# normal：保持导出默认（70 / 2 / 1 / 80）
+			pass
+
+	health = max_health
 
 
 func take_damage(amount: int, source_position: Vector2 = Vector2.ZERO) -> void:

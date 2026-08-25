@@ -950,6 +950,16 @@ func _spawn_monster_at_cell(cell: Vector2i) -> void:
 
 			enemy.global_position = get_cell_world_position(cell)
 
+			# 作业 3（第 6 课）：加权随机分配类型（60% 普通 / 25% 敏捷 / 15% 坦克）
+			if "enemy_type" in enemy:
+				var roll := rng.randf()
+				if roll < 0.60:
+					enemy.enemy_type = "normal"
+				elif roll < 0.85:
+					enemy.enemy_type = "fast"
+				else:
+					enemy.enemy_type = "tank"
+
 			if enemy.has_method("setup"):
 				enemy.setup(self, _make_patrol_points(cell))
 
@@ -1083,14 +1093,33 @@ func on_enemy_died(enemy: Node, death_position: Vector2) -> void:
 	# 敌人死亡：移出清单 + 运行期掉落判定（rng 消耗在 generate 重置种子后，不影响复现）
 	remove_dynamic_entity(enemy)
 
-	if rng.randf() < enemy_drop_chance:
-		_spawn_drop_at_position(death_position)
+	# 作业 4（第 6 课）：差异化掉落——按敌人类型决定掉率与掉落表
+	var drop_chance := enemy_drop_chance
+	var potion_chance := enemy_potion_chance
+
+	var etype: String = enemy.get("enemy_type") if "enemy_type" in enemy else "normal"
+	match etype:
+		"fast":
+			# 敏捷怪：掉率低但必掉金币（跑得快击杀难，奖励集中）
+			drop_chance = 0.5
+			potion_chance = 0.0
+		"tank":
+			# 坦克怪：必掉且高概率药水（硬仗厚奖）
+			drop_chance = 1.0
+			potion_chance = 0.6
+
+	if rng.randf() < drop_chance:
+		_spawn_drop_at_position(death_position, potion_chance)
 
 
-func _spawn_drop_at_position(world_position: Vector2) -> void:
+func _spawn_drop_at_position(world_position: Vector2, potion_chance: float = -1.0) -> void:
+	# potion_chance < 0 时用全局默认（保持文档版调用兼容）
+	if potion_chance < 0.0:
+		potion_chance = enemy_potion_chance
+
 	var drop_type := "gold"
 
-	if rng.randf() < enemy_potion_chance:
+	if rng.randf() < potion_chance:
 		drop_type = "potion"
 
 	_create_drop_area(drop_type, world_position)
