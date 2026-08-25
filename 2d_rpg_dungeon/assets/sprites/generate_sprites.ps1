@@ -370,6 +370,61 @@ Draw-Frame $heartEmptyBmp $heartEmpty $heartEmptyMap 0 0 "heart_empty"
 Save-AndVerify $heartEmptyBmp (Join-Path $outDir "heart_empty.png") $tile $tile
 $heartEmptyBmp.Dispose()
 
+# =========================================================
+# 掉落物：金币（金色三档渐变+高光）与药水（青色瓶+软木塞+高光）
+# G=主金 L=亮金 g=暗金 | B=青药水 W=高光 C=软木塞 b=瓶暗
+# =========================================================
+$goldMap = New-ColorMap `
+	@("L", @(255, 240, 150)) @("G", @(245, 205, 70)) @("g", @(190, 155, 45))
+$goldCoin = @(
+	"................",
+	"................",
+	"................",
+	"................",
+	".....GGGG.......",
+	"....GLLLGg......",
+	"...GLLGGLGg.....",
+	"...GLGGGLGg.....",
+	"...GLGGGLGg.....",
+	"...GLLGGLGg.....",
+	"....GLLLGg......",
+	".....GGGG.......",
+	"................",
+	"................",
+	"................",
+	"................"
+)
+$potionMap = New-ColorMap `
+	@("B", @(80, 210, 210)) @("W", @(220, 255, 255)) @("C", @(160, 115, 70)) @("b", @(50, 150, 155))
+$potion = @(
+	"................",
+	"................",
+	"......CC........",
+	"......CC........",
+	".....bbbb.......",
+	"....bBBBBb......",
+	"...bBWWBBBb.....",
+	"...bBWBBBBb.....",
+	"...bBBBBBBb.....",
+	"...bBBBBBBb.....",
+	"....bBBBBb......",
+	".....bbbb.......",
+	"................",
+	"................",
+	"................",
+	"................"
+)
+
+$goldBmp = New-Object System.Drawing.Bitmap $tile, $tile
+Draw-Frame $goldBmp $goldCoin $goldMap 0 0 "gold"
+Save-AndVerify $goldBmp (Join-Path $outDir "gold.png") $tile $tile
+$goldBmp.Dispose()
+
+$potionBmp = New-Object System.Drawing.Bitmap $tile, $tile
+Draw-Frame $potionBmp $potion $potionMap 0 0 "potion"
+Save-AndVerify $potionBmp (Join-Path $outDir "potion.png") $tile $tile
+$potionBmp.Dispose()
+
 # 旧单帧 player.png 已被 player_sheet.png 取代（down-idle 帧），删除避免混淆
 $oldPlayer = Join-Path $outDir "player.png"
 if (Test-Path $oldPlayer) {

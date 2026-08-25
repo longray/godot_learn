@@ -67,6 +67,10 @@ extends Node2D
 @export_range(0, 12) var min_monsters: int = 2
 @export_range(0, 12) var max_monsters: int = 6
 
+# 第 6 课：掉落参数（死亡掉率 0.7；掉落物中 0.25 是药水、0.75 是金币）
+@export_range(0.0, 1.0) var enemy_drop_chance: float = 0.7
+@export_range(0.0, 1.0) var enemy_potion_chance: float = 0.25
+
 # ---------- 节点 ----------
 
 @onready var tile_layer: TileMapLayer = $TileMapLayer
@@ -112,6 +116,11 @@ const POI_REACHABLE_RETRIES := 16
 const KEY_TEXTURE: Texture2D = preload("res://assets/sprites/key.png")
 const CHEST_TEXTURE: Texture2D = preload("res://assets/sprites/chest.png")
 const MONSTER_TEXTURE: Texture2D = preload("res://assets/sprites/monster.png")
+const GOLD_TEXTURE: Texture2D = preload("res://assets/sprites/gold.png")
+const POTION_TEXTURE: Texture2D = preload("res://assets/sprites/potion.png")
+
+# 第 6 课：金币计数（跨层保留——玩家长期资源）
+var gold_count: int = 0
 
 var has_key := false
 var treasure_count := 0
@@ -1057,6 +1066,76 @@ func _remove_entity(entity: Node) -> void:
 		entity.set_deferred("monitoring", false)
 
 	entity.queue_free()
+
+
+# =========================
+# 第 6 课：敌人死亡掉落（金币/药水）
+# =========================
+
+func remove_dynamic_entity(entity: Node) -> void:
+	# 敌人自杀（queue_free）前，从动态实体清单移除自己
+	dynamic_entities.erase(entity)
+
+
+func on_enemy_died(enemy: Node, death_position: Vector2) -> void:
+	# 敌人死亡：移出清单 + 运行期掉落判定（rng 消耗在 generate 重置种子后，不影响复现）
+	remove_dynamic_entity(enemy)
+
+	if rng.randf() < enemy_drop_chance:
+		_spawn_drop_at_position(death_position)
+
+
+func _spawn_drop_at_position(world_position: Vector2) -> void:
+	var drop_type := "gold"
+
+	if rng.randf() < enemy_potion_chance:
+		drop_type = "potion"
+
+	_create_drop_area(drop_type, world_position)
+
+
+func _create_drop_area(drop_type: String, world_position: Vector2) -> Area2D:
+	var area := Area2D.new()
+
+	area.monitoring = true
+	area.collision_layer = 0
+	area.collision_mask = 1
+
+	var collision := CollisionShape2D.new()
+	var circle := CircleShape2D.new()
+	circle.radius = cell_size * 0.25
+	collision.shape = circle
+	area.add_child(collision)
+
+	# 像素素材可视化（金币/药水）
+	var visual := Sprite2D.new()
+	visual.texture = GOLD_TEXTURE if drop_type == "gold" else POTION_TEXTURE
+	area.add_child(visual)
+
+	area.add_to_group("drop")
+	area.body_entered.connect(_on_drop_body_entered.bind(area, drop_type))
+
+	add_child(area)
+	area.global_position = world_position
+
+	dynamic_entities.append(area)
+
+	return area
+
+
+func _on_drop_body_entered(body: Node2D, area: Area2D, drop_type: String) -> void:
+	if not body.is_in_group("player"):
+		return
+
+	if drop_type == "gold":
+		gold_count += 1
+		print("捡到金币，当前金币：", gold_count)
+	elif drop_type == "potion":
+		if body.has_method("heal"):
+			body.heal(1)
+		print("捡到药水并恢复生命。")
+
+	_remove_entity(area)
 
 
 func _update_hud(locked_hint: bool = false) -> void:

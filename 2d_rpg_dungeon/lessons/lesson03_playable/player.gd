@@ -22,12 +22,26 @@ extends CharacterBody2D
 @export var max_health: int = 3
 @export var invincibility_time: float = 0.8
 
+# 第 6 课：攻击参数（临时 Area2D 方案——生成→存在 0.08s→销毁）
+@export var attack_damage: int = 1
+@export var attack_cooldown: float = 0.35
+@export var attack_duration: float = 0.08
+@export var attack_radius: float = 12.0
+@export var attack_offset: float = 16.0
+
+# 默认 ui_accept（空格/回车）；作业 1 换自定义动作 "attack"
+const ATTACK_ACTION := "ui_accept"
+
 # 由 Main 场景注入
 var dungeon: Node
 
 var health: int = 3
 var invincible: bool = false
 var knockback := Vector2.ZERO
+
+# 第 6 课：朝向（攻击方向）与攻击冷却
+var facing := Vector2.RIGHT
+var attack_cooldown_remaining: float = 0.0
 
 # =========================
 # 四向行走动画（spritesheet 3 列 = 迈A/站立/迈B，3 行 = 下/上/侧面）
@@ -119,6 +133,13 @@ func _physics_process(delta: float) -> void:
 	var desired_velocity := Vector2.ZERO
 	if input_vector != Vector2.ZERO:
 		desired_velocity = input_vector.normalized() * speed
+		facing = input_vector.normalized()  # 第 6 课：攻击朝向随移动更新
+
+	# 第 6 课：攻击（冷却中不可发；朝向前方生成临时攻击区域）
+	attack_cooldown_remaining = maxf(0.0, attack_cooldown_remaining - delta)
+
+	if Input.is_action_just_pressed(ATTACK_ACTION) and attack_cooldown_remaining <= 0.0:
+		_attack()
 
 	# 第 5 课：移动 = 意图速度 + 击退速度（击退随时间衰减）
 	var move_velocity := desired_velocity + knockback
@@ -203,6 +224,62 @@ func _notify_health_ui() -> void:
 	# 作业 1（第 5 课）：通知 HUD 刷新心形（dungeon 可能未注入，防御性检查）
 	if dungeon and dungeon.has_method("update_health_ui"):
 		dungeon.update_health_ui(health, max_health)
+
+
+func heal(amount: int) -> void:
+	# 第 6 课：药水回血（上限 max_health）
+	health = mini(max_health, health + amount)
+	print("恢复生命，当前生命：", health)
+
+	_notify_health_ui()
+
+
+func _attack() -> void:
+	# 第 6 课：朝向前方生成临时攻击 Area2D（存在 attack_duration 后销毁）
+	attack_cooldown_remaining = attack_cooldown
+
+	var hitbox := Area2D.new()
+
+	# 只检测敌人（Enemy 根节点在 Layer 2）
+	hitbox.collision_layer = 0
+	hitbox.collision_mask = 2
+
+	hitbox.position = facing * attack_offset
+
+	var collision := CollisionShape2D.new()
+	var circle := CircleShape2D.new()
+	circle.radius = attack_radius
+	collision.shape = circle
+	hitbox.add_child(collision)
+
+	# 攻击可视化（作业 2 可升级为扇形/旋转）
+	var visual := Polygon2D.new()
+	var size := attack_radius * 0.8
+
+	visual.polygon = PackedVector2Array([
+		Vector2(-size, -size),
+		Vector2(size, -size),
+		Vector2(size, size),
+		Vector2(-size, size)
+	])
+
+	visual.color = Color(1.0, 1.0, 1.0, 0.35)
+	hitbox.add_child(visual)
+
+	hitbox.body_entered.connect(_on_attack_hitbox_body_entered.bind(hitbox))
+
+	add_child(hitbox)
+
+	await get_tree().create_timer(attack_duration).timeout
+
+	if is_instance_valid(hitbox):
+		hitbox.queue_free()
+
+
+func _on_attack_hitbox_body_entered(body: Node2D, hitbox: Area2D) -> void:
+	# 命中敌人：直调 take_damage（敌人 Layer 2 已被 mask 过滤）
+	if body.has_method("take_damage"):
+		body.take_damage(attack_damage, global_position)
 
 
 func _apply_knockback(source_position: Vector2) -> void:

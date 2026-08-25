@@ -23,6 +23,9 @@ extends CharacterBody2D
 # 接触伤害判定半径（≈ Hitbox 6.4 + 玩家碰撞体 5）
 @export var contact_range: float = 11.0
 
+# 第 6 课：生命（作业 4（第 5 课）补完——敌人可被攻击消灭）
+@export var max_health: int = 2
+
 var chase_speed: float = 0.0
 
 var dungeon: Node
@@ -33,6 +36,11 @@ var current_point_index: int = 0
 var is_waiting: bool = false
 var wait_remaining: float = 0.0
 var is_chasing: bool = false
+
+# 第 6 课：生命与受击
+var health: int = 2
+var dead: bool = false
+var _flash_t: float = 0.0  # 受击闪烁剩余时间（>0 时 modulate 优先级最高）
 
 # 呼吸动画计时
 var _t := 0.0
@@ -66,8 +74,15 @@ func _process(delta: float) -> void:
 	var s := 1.0 + amp * sin(_t * 3.0)
 	sprite.scale = Vector2(s, s)
 
-	# 追击时泛红警示（发现你了！）
-	sprite.modulate = Color(1.0, 0.6, 0.6) if is_chasing else Color.WHITE
+	# modulate 三态协调（优先级：受击红 > 追击粉 > 正常白）
+	# 踩坑：不能在受击回调里直接赋 modulate——本函数每帧覆盖会立刻冲掉闪烁
+	if _flash_t > 0.0:
+		_flash_t -= delta
+		sprite.modulate = Color(1.0, 0.35, 0.35)
+	elif is_chasing:
+		sprite.modulate = Color(1.0, 0.6, 0.6)
+	else:
+		sprite.modulate = Color.WHITE
 
 	# 张望：等待中偶尔左右瞥一眼（身体微偏移模拟探头）
 	if _look_t > 0.0:
@@ -98,6 +113,11 @@ func setup(dungeon_reference: Node, points: Array) -> void:
 	dungeon = dungeon_reference
 	patrol_points = points
 
+	# 第 6 课：每只满血出场
+	health = max_health
+	dead = false
+	_flash_t = 0.0
+
 	# 速度个体差异 ±15%（运行期随机：每次玩都不同，群体不齐步）
 	speed *= randf_range(0.85, 1.15)
 	chase_speed = speed * chase_speed_multiplier
@@ -122,6 +142,31 @@ func setup(dungeon_reference: Node, points: Array) -> void:
 	wait_remaining = 0.0
 
 
+func take_damage(amount: int, source_position: Vector2 = Vector2.ZERO) -> void:
+	# 第 6 课：被玩家攻击（dead 后不再响应，防尸体补刀）
+	if dead:
+		return
+
+	health -= amount
+
+	print("敌人受击，剩余生命：", health)
+
+	if health <= 0:
+		dead = true
+		_die()
+		return
+
+	_flash_t = 0.12  # 受击闪烁（_process 里按优先级渲染）
+
+
+func _die() -> void:
+	# 死亡处理交 Main（掉落判定/动态实体移除）；敌人只负责自己消失
+	if dungeon and dungeon.has_method("on_enemy_died"):
+		dungeon.on_enemy_died(self, global_position)
+
+	queue_free()
+
+
 func _get_player_ref() -> Node2D:
 	if player == null and dungeon is Node:
 		player = dungeon.get_node_or_null("Player")
@@ -129,7 +174,7 @@ func _get_player_ref() -> Node2D:
 
 
 func _physics_process(delta: float) -> void:
-	if dungeon == null or not dungeon.has_method("is_world_position_walkable"):
+	if dead or dungeon == null or not dungeon.has_method("is_world_position_walkable"):
 		velocity = Vector2.ZERO
 		move_and_slide()
 		return
