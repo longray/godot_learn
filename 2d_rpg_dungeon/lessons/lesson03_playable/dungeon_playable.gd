@@ -2,7 +2,9 @@ extends Node2D
 
 # =========================
 # 第 3 课：连通性验证、玩家出生点、简单移动、出口触发
+# 第 4 课：钥匙、宝箱、怪物出生点、出口锁（POI 体系重构）
 # 在第 2 课基础上新增：A* 可达性验证与自动修复、玩家、网格移动阻挡、出口 Area2D 触发
+# 第 4 课新增：used_cells 占用管理、dynamic_entities 动态实体、宝箱计数、怪物危险区
 # =========================
 
 # ---------- 基础生成参数 ----------
@@ -50,6 +52,16 @@ extends Node2D
 @export var exit_radius_multiplier: float = 0.45
 @export var debug_print_path: bool = false
 
+# ---------- POI 参数（第 4 课：钥匙、宝箱、怪物出生点） ----------
+
+@export_group("POI")
+
+@export_range(0, 10) var min_treasures: int = 2
+@export_range(0, 10) var max_treasures: int = 5
+
+@export_range(0, 12) var min_monsters: int = 2
+@export_range(0, 12) var max_monsters: int = 6
+
 # ---------- 节点 ----------
 
 @onready var tile_layer: TileMapLayer = $TileMapLayer
@@ -79,9 +91,24 @@ var astar_grid := AStarGrid2D.new()
 var player_instance: CharacterBody2D
 var exit_area: Area2D
 
-# 作业 4：钥匙门状态
+# =========================
+# 第 4 课：POI（钥匙、宝箱、怪物出生点）
+# =========================
+
+const INVALID_CELL := Vector2i(-1, -1)
+
 var has_key := false
-var key_area: Area2D
+var treasure_count := 0
+
+var key_cell := INVALID_CELL
+var treasure_cells: Array[Vector2i] = []
+var monster_cells: Array[Vector2i] = []
+
+# 已被占用的格子，避免钥匙/宝箱/怪物重叠
+var used_cells: Dictionary = {}
+
+# 当前地牢里生成的钥匙、宝箱、怪物节点（玩家和出口不在此列，仍复用）
+var dynamic_entities: Array[Node] = []
 
 # HUD 引用（场景里的 CanvasLayer > Label）
 @onready var key_label: Label = $HUD/KeyLabel
@@ -109,7 +136,15 @@ func generate() -> void:
 	map_width = maxi(20, map_width)
 	map_height = maxi(16, map_height)
 
+	# 第 4 课：每层重置玩家状态
+	has_key = false
+	treasure_count = 0
+
 	_setup_rng()
+
+	# 第 4 课：清理上一层的钥匙、宝箱、怪物（玩家和出口仍复用）
+	_clear_dynamic_entities()
+
 	_clear_map()
 	_place_rooms()
 	_connect_rooms()
@@ -117,10 +152,14 @@ func generate() -> void:
 	_pick_entrance_and_exit()
 	_ensure_exit_reachable()
 
+	# 第 4 课：生成钥匙、宝箱、怪物位置
+	_pick_poi_cells()
+
 	_setup_tilemap()
 	_build_tilemap()
 
 	_update_or_spawn_exit()
+	_spawn_poi_nodes()
 	_update_or_spawn_player()
 	_spawn_markers()
 	_center_camera()
@@ -129,13 +168,11 @@ func generate() -> void:
 	if path_overlay:
 		path_overlay.set_path(astar_grid.get_id_path(entrance_cell, exit_cell), cell_size)
 
-	# 作业 4：每层重新放钥匙 + 重置钥匙状态（放最后，避免影响既有 RNG 锚点）
-	has_key = false
-	_update_or_spawn_key()
 	_update_hud()
 
 	if debug_print_path:
 		print("入口：", entrance_cell, "  出口：", exit_cell)
+		print("钥匙：", key_cell, "  宝箱数：", treasure_cells.size(), "  怪物数：", monster_cells.size())
 
 
 # =========================
@@ -553,94 +590,333 @@ func _update_or_spawn_exit() -> void:
 
 
 func _on_exit_body_entered(body: Node2D) -> void:
-	if body.is_in_group("player"):
-		# 作业 4：门控——没钥匙进不了出口
-		if not has_key:
-			print("出口被锁住了，需要钥匙！")
-			_update_hud(true)
-			return
-
-		print("玩家到达出口，重新生成地牢。")
-		# 物理回调中不能直接改场景树，延迟到帧末安全执行
-		call_deferred("generate")
-
-
-# =========================
-# 钥匙（作业 4）
-# =========================
-
-func _update_or_spawn_key() -> void:
-	if tile_layer == null:
+	if not body.is_in_group("player"):
 		return
 
-	# 删旧钥匙（remove_child 先解除树，防同帧匿名坑）
-	if key_area != null and is_instance_valid(key_area):
-		tile_layer.remove_child(key_area)
-		key_area.queue_free()
+	# 第 4 课：出口锁——必须先拿到钥匙
+	if has_key:
+		print("使用钥匙，进入下一层。")
+		# 物理回调中不能直接改场景树，延迟到帧末安全执行
+		call_deferred("generate")
+	else:
+		print("出口被锁住了，需要钥匙。")
+		_update_hud(true)
 
-	var key_cell := _pick_key_cell()
 
-	key_area = Area2D.new()
-	key_area.name = "KeyArea"
-	key_area.monitoring = true
+# =========================
+# 第 4 课：POI 选点（钥匙、宝箱、怪物）
+# =========================
 
-	var collision := CollisionShape2D.new()
-	var circle := CircleShape2D.new()
-	circle.radius = cell_size * 0.45
-	collision.shape = circle
-	key_area.add_child(collision)
+func _pick_poi_cells() -> void:
+	used_cells.clear()
 
-	# 金色菱形可视化（比玩家小一号）
-	var visual := Polygon2D.new()
-	var diamond: PackedVector2Array = [
-		Vector2(0, -6), Vector2(5, 0), Vector2(0, 6), Vector2(-5, 0)
-	]
-	visual.polygon = diamond
-	visual.color = Color(1.0, 0.8, 0.0)
-	key_area.add_child(visual)
+	key_cell = INVALID_CELL
+	treasure_cells.clear()
+	monster_cells.clear()
 
-	key_area.body_entered.connect(_on_key_body_entered)
+	# 入口和出口不能被内容点占用
+	_mark_cell_used(entrance_cell)
+	_mark_cell_used(exit_cell)
 
-	tile_layer.add_child(key_area)
-	key_area.position = _cell_to_center_local(key_cell)
+	# 先选钥匙（最远房策略，见 _pick_key_cell）
+	key_cell = _pick_key_cell()
+	if key_cell != INVALID_CELL:
+		_mark_cell_used(key_cell)
+
+	# 再选宝箱
+	var min_t := mini(min_treasures, max_treasures)
+	var max_t := maxi(min_treasures, max_treasures)
+	var treasure_amount := rng.randi_range(min_t, max_t)
+
+	for i in treasure_amount:
+		var cell := _pick_random_available_cell_in_rooms()
+		if cell == INVALID_CELL:
+			break
+
+		treasure_cells.append(cell)
+		_mark_cell_used(cell)
+
+	# 最后选怪物
+	var min_m := mini(min_monsters, max_monsters)
+	var max_m := maxi(min_monsters, max_monsters)
+	var monster_amount := rng.randi_range(min_m, max_m)
+
+	for i in monster_amount:
+		var cell := _pick_random_available_cell_in_rooms()
+		if cell == INVALID_CELL:
+			break
+
+		monster_cells.append(cell)
+		_mark_cell_used(cell)
+
+
+func _mark_cell_used(cell: Vector2i) -> void:
+	if cell == INVALID_CELL:
+		return
+
+	used_cells[cell] = true
+
+
+func _is_cell_available(cell: Vector2i) -> bool:
+	if cell == INVALID_CELL:
+		return false
+
+	if cell.x < 0 or cell.x >= map_width:
+		return false
+	if cell.y < 0 or cell.y >= map_height:
+		return false
+
+	if grid[cell.y][cell.x] != CELL_FLOOR:
+		return false
+
+	if used_cells.has(cell):
+		return false
+
+	return true
 
 
 func _pick_key_cell() -> Vector2i:
-	# 钥匙优先放「既非入口也非出口」的房间 → 强制玩家绕支路探索
+	# 第 4 课策略：排除入口房和出口房，选离入口最远的房间
+	# → 强制玩家探索（第 3 课为随机房，本课升级）
 	if rooms.is_empty():
-		return entrance_cell
+		return INVALID_CELL
 
-	# 找出口所在房间
-	var exit_room_idx := -1
-	for i in rooms.size():
-		if _room_center(rooms[i]) == exit_cell:
-			exit_room_idx = i
-			break
+	var candidate_rooms: Array = []
 
-	# 候选：非入口(0)、非出口的房间
-	var candidates: Array = []
-	for i in range(1, rooms.size()):
-		if i != exit_room_idx:
-			candidates.append(i)
+	# 优先排除入口房和出口房
+	for room in rooms:
+		var center := _room_center(room)
+
+		if center == entrance_cell:
+			continue
+		if center == exit_cell:
+			continue
+
+		candidate_rooms.append(room)
+
+	if candidate_rooms.is_empty():
+		candidate_rooms = rooms
+
+	# 在候选房间里选择离入口最远的房间
+	var best_room: Rect2i = candidate_rooms[0]
+	var best_distance := -1
+
+	for room in candidate_rooms:
+		var center := _room_center(room)
+		var distance := entrance_cell.distance_squared_to(center)
+
+		if distance > best_distance:
+			best_distance = distance
+			best_room = room
+
+	var cell := _pick_random_available_cell_in_room(best_room)
+
+	if cell != INVALID_CELL:
+		return cell
+
+	# 如果这个房间没有合适位置，就全局找一个
+	return _pick_random_available_cell_in_grid()
+
+
+func _pick_random_available_cell_in_room(room: Rect2i) -> Vector2i:
+	var candidates: Array[Vector2i] = []
+
+	for y in range(room.position.y, room.position.y + room.size.y):
+		for x in range(room.position.x, room.position.x + room.size.x):
+			var cell := Vector2i(x, y)
+
+			if _is_cell_available(cell):
+				candidates.append(cell)
 
 	if candidates.is_empty():
-		# 只有入口+出口两个房间：钥匙放出口房间内（避开出口格）
-		if exit_room_idx >= 0:
-			return _pick_random_floor_cell_in_room(rooms[exit_room_idx], exit_cell)
-		return _pick_random_floor_cell_in_room(rooms[0], entrance_cell)
+		return INVALID_CELL
 
-	var room_idx: int = candidates[rng.randi_range(0, candidates.size() - 1)]
-	return _room_center(rooms[room_idx])
+	return candidates[rng.randi_range(0, candidates.size() - 1)]
 
 
-func _on_key_body_entered(body: Node2D) -> void:
-	if body.is_in_group("player") and not has_key:
-		has_key = true
-		print("获得钥匙！出口已解锁。")
-		# 拾取后钥匙消失；monitoring 属物理状态，物理回调中必须 set_deferred
-		key_area.set_deferred("monitoring", false)
-		key_area.visible = false
-		_update_hud()
+func _pick_random_available_cell_in_rooms() -> Vector2i:
+	var candidates: Array[Vector2i] = []
+
+	for room in rooms:
+		for y in range(room.position.y, room.position.y + room.size.y):
+			for x in range(room.position.x, room.position.x + room.size.x):
+				var cell := Vector2i(x, y)
+
+				if _is_cell_available(cell):
+					candidates.append(cell)
+
+	if candidates.is_empty():
+		return _pick_random_available_cell_in_grid()
+
+	return candidates[rng.randi_range(0, candidates.size() - 1)]
+
+
+func _pick_random_available_cell_in_grid() -> Vector2i:
+	var candidates: Array[Vector2i] = []
+
+	for y in map_height:
+		for x in map_width:
+			var cell := Vector2i(x, y)
+
+			if _is_cell_available(cell):
+				candidates.append(cell)
+
+	if candidates.is_empty():
+		return INVALID_CELL
+
+	return candidates[rng.randi_range(0, candidates.size() - 1)]
+
+
+# =========================
+# 第 4 课：POI 节点生成（Area2D + 色块可视化）
+# =========================
+
+func _clear_dynamic_entities() -> void:
+	for entity in dynamic_entities:
+		if is_instance_valid(entity):
+			entity.queue_free()
+
+	dynamic_entities.clear()
+
+
+func _spawn_poi_nodes() -> void:
+	if tile_layer == null:
+		return
+
+	if key_cell != INVALID_CELL:
+		_create_pickup_area(
+			key_cell,
+			"key",
+			Color(1.0, 0.85, 0.2),
+			0.35
+		)
+
+	for cell in treasure_cells:
+		_create_pickup_area(
+			cell,
+			"treasure",
+			Color(0.9, 0.6, 0.2),
+			0.30
+		)
+
+	for cell in monster_cells:
+		_create_hazard_area(cell)
+
+
+func _create_pickup_area(
+	cell: Vector2i,
+	pickup_type: String,
+	color: Color,
+	radius_multiplier: float
+) -> Area2D:
+	var area := _create_poi_area(cell, color, radius_multiplier)
+
+	area.add_to_group(pickup_type)
+
+	if pickup_type == "key":
+		area.body_entered.connect(_on_key_body_entered.bind(area))
+	elif pickup_type == "treasure":
+		area.body_entered.connect(_on_treasure_body_entered.bind(area))
+
+	return area
+
+
+func _create_hazard_area(cell: Vector2i) -> Area2D:
+	var area := _create_poi_area(
+		cell,
+		Color(0.8, 0.2, 0.8),
+		0.40
+	)
+
+	area.add_to_group("monster")
+	area.body_entered.connect(_on_monster_body_entered.bind(area))
+
+	return area
+
+
+func _create_poi_area(
+	cell: Vector2i,
+	color: Color,
+	radius_multiplier: float
+) -> Area2D:
+	var area := Area2D.new()
+	area.position = _cell_to_center_local(cell)
+	area.monitoring = true
+
+	var collision := CollisionShape2D.new()
+	var circle := CircleShape2D.new()
+	circle.radius = cell_size * radius_multiplier
+	collision.shape = circle
+	area.add_child(collision)
+
+	var visual := Polygon2D.new()
+	var size := cell_size * radius_multiplier
+
+	visual.polygon = PackedVector2Array([
+		Vector2(-size, -size),
+		Vector2(size, -size),
+		Vector2(size, size),
+		Vector2(-size, size)
+	])
+
+	visual.color = color
+	area.add_child(visual)
+
+	tile_layer.add_child(area)
+	dynamic_entities.append(area)
+
+	return area
+
+
+# =========================
+# 第 4 课：POI 触发逻辑
+# =========================
+
+func _on_key_body_entered(body: Node2D, area: Area2D) -> void:
+	if not body.is_in_group("player"):
+		return
+
+	has_key = true
+
+	print("拿到了钥匙！出口已解锁。")
+
+	_update_hud()
+	_remove_entity(area)
+
+
+func _on_treasure_body_entered(body: Node2D, area: Area2D) -> void:
+	if not body.is_in_group("player"):
+		return
+
+	treasure_count += 1
+
+	print("打开宝箱，当前宝箱数：", treasure_count)
+
+	_remove_entity(area)
+
+
+func _on_monster_body_entered(body: Node2D, area: Area2D) -> void:
+	if not body.is_in_group("player"):
+		return
+
+	print("碰到怪物！回到入口。")
+
+	# 本课规则：碰到怪物 → 传送回入口（后续课程升级为扣血/战斗）
+	if is_instance_valid(player_instance):
+		player_instance.global_position = get_entrance_world_position()
+
+
+func _remove_entity(entity: Node) -> void:
+	if not is_instance_valid(entity):
+		return
+
+	dynamic_entities.erase(entity)
+
+	# 踩坑：monitoring 属物理状态，物理回调中必须 set_deferred（第 3 课验证过）
+	if entity is Area2D:
+		entity.set_deferred("monitoring", false)
+
+	entity.queue_free()
 
 
 func _update_hud(locked_hint: bool = false) -> void:
@@ -654,7 +930,7 @@ func _update_hud(locked_hint: bool = false) -> void:
 		key_label.text = "出口被锁住了！去寻找金色钥匙…"
 		key_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.4))
 	else:
-		key_label.text = "钥匙：未获得（找金色菱形）"
+		key_label.text = "钥匙：未获得（找黄色方块）"
 		key_label.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0))
 
 
