@@ -5,6 +5,7 @@ extends Node2D
 # 第 4 课：钥匙、宝箱、怪物出生点、出口锁（POI 体系重构）
 # 在第 2 课基础上新增：A* 可达性验证与自动修复、玩家、网格移动阻挡、出口 Area2D 触发
 # 第 4 课新增：used_cells 占用管理、dynamic_entities 动态实体、宝箱计数、怪物危险区
+# 第 5 课新增：敌人巡逻路径分配（确定性零 RNG）、respawn_player、每层重置玩家状态
 # 可视化：像素素材（assets/sprites/，generate_sprites.ps1 生成）替代色块
 # =========================
 
@@ -902,7 +903,7 @@ func _spawn_poi_nodes() -> void:
 		)
 
 	for cell in monster_cells:
-		_spawn_enemy(cell)
+		_spawn_monster_at_cell(cell)
 
 
 func _create_pickup_area(
@@ -923,14 +924,19 @@ func _create_pickup_area(
 	return area
 
 
-func _spawn_enemy(cell: Vector2i) -> void:
-	# 作业 5：实例化真正的敌人场景（CharacterBody2D + player_touched 信号）
+func _spawn_monster_at_cell(cell: Vector2i) -> void:
+	# 第 5 课：实例化巡逻敌人（setup 注入地图引用 + 巡逻路径）
 	if enemy_scene != null:
 		var enemy := enemy_scene.instantiate() as CharacterBody2D
+
 		if enemy:
-			enemy.position = _cell_to_center_local(cell)
-			enemy.player_touched.connect(_on_enemy_player_touched)
-			tile_layer.add_child(enemy)
+			add_child(enemy)
+
+			enemy.global_position = get_cell_world_position(cell)
+
+			if enemy.has_method("setup"):
+				enemy.setup(self, _make_patrol_points(cell))
+
 			dynamic_entities.append(enemy)
 			return
 
@@ -1008,21 +1014,21 @@ func _on_treasure_body_entered(body: Node2D, area: Area2D) -> void:
 
 
 func _on_monster_body_entered(body: Node2D, area: Area2D) -> void:
+	# 第 5 课（5.8）：回退危险区也走 take_damage（掉血+击退+无敌）
 	if not body.is_in_group("player"):
 		return
 
-	print("碰到怪物！回到入口。")
+	if body.has_method("take_damage"):
+		body.take_damage(1, area.global_position)
+	else:
+		print("碰到怪物！回到入口。")
 
-	# 本课规则：碰到怪物 → 传送回入口（后续课程升级为扣血/战斗）
-	if is_instance_valid(player_instance):
-		player_instance.global_position = get_entrance_world_position()
+		if is_instance_valid(player_instance):
+			player_instance.global_position = get_entrance_world_position()
 
 
-func _on_enemy_player_touched() -> void:
-	# 作业 5：敌人场景信号回调（行为与 _on_monster_body_entered 一致）
-	# 惩罚逻辑集中在此，下一课升级战斗系统时只改这一处
-	print("碰到怪物！回到入口。")
-
+func respawn_player() -> void:
+	# 第 5 课：玩家死亡后重生到入口（由 Player.die() 调用）
 	if is_instance_valid(player_instance):
 		player_instance.global_position = get_entrance_world_position()
 
@@ -1085,6 +1091,10 @@ func _update_or_spawn_player() -> void:
 	if "dungeon" in player_instance:
 		player_instance.dungeon = self
 
+	# 第 5 课（5.7）：每层重置玩家生命/无敌/击退状态
+	if player_instance.has_method("reset_for_new_layer"):
+		player_instance.reset_for_new_layer()
+
 
 # =========================
 # 入口 / 出口标记（第 2 课作业 1+2 成果，保留）
@@ -1115,6 +1125,89 @@ func _clear_markers() -> void:
 # =========================
 # 移动阻挡查询
 # =========================
+
+func get_cell_world_position(cell: Vector2i) -> Vector2:
+	# 第 5 课：格子坐标 → 世界坐标（敌人巡逻点用）
+	if tile_layer == null:
+		return _cell_to_center_local(cell)
+
+	return tile_layer.to_global(_cell_to_center_local(cell))
+
+
+func _make_patrol_points(cell: Vector2i) -> Array:
+	# 第 5 课：为敌人生成巡逻路径（纯确定性扫描，零 RNG 消耗）
+	var points: Array = []
+
+	# 优先在敌人所在房间里巡逻：敌人出生点 <-> 房间中心
+	var room := _find_room_containing_cell(cell)
+
+	if room.size != Vector2i.ZERO:
+		var center_cell := _room_center(room)
+
+		if center_cell != cell and is_cell_walkable(center_cell):
+			points.append(get_cell_world_position(cell))
+			points.append(get_cell_world_position(center_cell))
+			return points
+
+	# 不在房间/中心不可用：沿上下左右找可走方向做短距离巡逻
+	var directions := [
+		Vector2i(1, 0),
+		Vector2i(-1, 0),
+		Vector2i(0, 1),
+		Vector2i(0, -1)
+	]
+
+	for dir in directions:
+		var forward := _scan_walkable_cells(cell, dir, 5)
+
+		if not forward.is_empty():
+			points.append(get_cell_world_position(cell))
+			points.append(get_cell_world_position(forward[-1]))
+			return points
+
+		var backward := _scan_walkable_cells(cell, -dir, 5)
+
+		if not backward.is_empty():
+			points.append(get_cell_world_position(cell))
+			points.append(get_cell_world_position(backward[-1]))
+			return points
+
+	# 实在找不到巡逻路径，就原地站立
+	points.append(get_cell_world_position(cell))
+	return points
+
+
+func _find_room_containing_cell(cell: Vector2i) -> Rect2i:
+	for room in rooms:
+		if _room_has_cell(room, cell):
+			return room
+
+	return Rect2i()
+
+
+func _room_has_cell(room: Rect2i, cell: Vector2i) -> bool:
+	return (
+		cell.x >= room.position.x
+		and cell.x < room.position.x + room.size.x
+		and cell.y >= room.position.y
+		and cell.y < room.position.y + room.size.y
+	)
+
+
+func _scan_walkable_cells(from_cell: Vector2i, dir: Vector2i, max_steps: int) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+
+	var cell := from_cell + dir
+
+	for i in max_steps:
+		if is_cell_walkable(cell):
+			result.append(cell)
+			cell += dir
+		else:
+			break
+
+	return result
+
 
 func is_world_position_walkable(world_position: Vector2, radius: float = 0.0) -> bool:
 	if grid.is_empty():
