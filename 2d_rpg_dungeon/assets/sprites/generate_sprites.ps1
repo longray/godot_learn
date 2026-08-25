@@ -62,81 +62,81 @@ $playerMap = New-ColorMap `
 	@("p", @(60, 70, 90)) @("P", @(45, 54, 70)) `
 	@("b", @(110, 75, 45)) @("B", @(85, 58, 35))
 
-# ---- 躯干（y0-y12，13 行）----
+# ---- 躯干（y0-y12，13 行；v3 瘦身：头 8 宽、躯干 9-10 宽）----
 $torsoDown = @(
 	"................",
+	".....hhhhhh.....",
 	"....hhhhhhhh....",
-	"...hhhhhhhhhh...",
-	"...hhHhhhhhhh...",
-	"...hfffffffFh...",
-	"...hfDffffDfh...",
-	"...hffffffffh...",
-	"....fffffffF....",
-	"...tttttttttt...",
-	"..ttTtttttttd...",
-	"..ftttttttttf...",
-	"..fttttGGtttf...",
-	"...tttttttttt..."
+	"....hhHhhhhh....",
+	"....hfffffFh....",
+	"....hfDffDfh....",
+	"....hffffffh....",
+	".....fffffF.....",
+	"....tttttttt....",
+	"....tTtttttd....",
+	"...ftttttttf....",
+	"...ftttGGttf....",
+	"....tttttttt...."
 )
 $torsoUp = @(
 	"................",
+	".....hhhhhh.....",
 	"....hhhhhhhh....",
-	"...hhhhhhhhhh...",
-	"...hhHhhhhhhh...",
-	"...hhhhhhhhhh...",
-	"...hhhhhhhhhh...",
-	"...hhhhhhhhhh...",
+	"....hhHhhhhh....",
 	"....hhhhhhhh....",
-	"...tttttttttt...",
-	"..ttTtttttttd...",
-	"..ftttttttttf...",
-	"..ftttttttttf...",
-	"...tttttttttt..."
+	"....hhhhhhhh....",
+	"....hhhhhhhh....",
+	".....hhhhhh.....",
+	"....tttttttt....",
+	"....tTtttttd....",
+	"...ftttttttf....",
+	"...ftttttttf....",
+	"....tttttttt...."
 )
 # 侧面（朝右）：y10 手臂行分三态（前摆/垂/后摆），其余共用
 $torsoSideHead = @(
 	"................",
+	".....hhhhhh.....",
 	"....hhhhhhhh....",
-	"...hhhhhhhhhh...",
-	"...hhhHhhhhhh...",
-	"...hhhfffffff...",
-	"...hhhffDffff...",
-	"...hhhfffffff...",
-	"....hhffffff....",
-	"...tttttttt.....",
-	"..ttTttttttd...."
+	"....hhhHhhhh....",
+	"....hhhfffff....",
+	"....hhhffDff....",
+	"....hhhfffff....",
+	".....hhffff.....",
+	"....ttttttt.....",
+	"....tTttttt....."
 )
 $torsoSideArmFwd = @(            # stepA：手臂前摆
-	"..fttttttt......",
-	"...fttttGt......",
-	"....tttttt......"
+	"..ftttttt.......",
+	"...ftttGt.......",
+	"....ttttt......."
 )
 $torsoSideArmIdle = @(           # idle：手臂垂
 	"...ftttttt......",
-	"...fttttGt......",
-	"....tttttt......"
+	"...ftttGt.......",
+	"....ttttt......."
 )
 $torsoSideArmBack = @(           # stepB：手臂后摆
 	"....fttttt......",
-	"...fttttGt......",
-	"....tttttt......"
+	"...ftttGt.......",
+	"....ttttt......."
 )
 
-# ---- 腿部（y13-y15，3 行）----
+# ---- 腿部（y13-y15，3 行；v3：上下行迈步 = 靴子外移 + 抬起，动作加大）----
 $legsIdle = @(
-	"....pp....PP....",
-	"....bb....BB....",
-	"...bbb....BBB..."
+	".....pp..PP.....",
+	".....bb..BB.....",
+	"....bbb..BBB...."
 )
-$legsA = @(                       # 迈左脚（左靴外迈，右脚收起）
-	"....pp....PP....",
-	"...bbb....BB....",
-	"..bbb..........."
+$legsA = @(                       # 迈左脚：左靴外移 + 抬起（短 1 行）
+	".....pp..PP.....",
+	"....bbb..BB.....",
+	"....bb...BBB...."
 )
-$legsB = @(                       # 迈右脚（右靴外迈，左脚收起）
-	"....pp....PP....",
-	"....bb....BB....",
-	"..........bbBB.."
+$legsB = @(                       # 迈右脚：右靴外移 + 抬起
+	".....pp..PP.....",
+	".....bb..BBB....",
+	"....bbb..BB....."
 )
 $sideLegsIdle = @(
 	".....pp.PP......",
@@ -144,9 +144,9 @@ $sideLegsIdle = @(
 	"....bbb.BBB....."
 )
 $sideLegsA = @(                   # 前脚前迈（朝右：前=右）
-	"....pp...PP.....",
-	"...bb.....BB....",
-	"..bbb.....BBB..."
+	"....pp..PP......",
+	"...bb....BB.....",
+	"..bbb....BBB...."
 )
 $sideLegsB = @(
 	".....pp.PP......",
@@ -235,13 +235,13 @@ Save-AndVerify $chestBmp (Join-Path $outDir "chest.png") $tile $tile
 $chestBmp.Dispose()
 
 # =========================================================
-# 怪物：紫史莱姆三档渐变 + 底部半透明阴影
-# P=亮紫 p=紫 q=暗紫 W=眼白 D=瞳 S=阴影
+# 怪物：紫史莱姆三档渐变（影子不画进素材——呼吸动画会缩放它，
+# 用 enemy.tscn 的独立 Shadow 节点，动画时影子稳定）
+# P=亮紫 p=紫 q=暗紫 W=眼白 D=瞳
 # =========================================================
 $monsterMap = New-ColorMap `
 	@("P", @(178, 110, 215)) @("p", @(150, 80, 190)) @("q", @(110, 55, 145)) `
-	@("W", @(245, 245, 250)) @("D", @(40, 30, 60)) `
-	@("S", @(15, 20, 35, 110))
+	@("W", @(245, 245, 250)) @("D", @(40, 30, 60))
 $monster = @(
 	"................",
 	"................",
@@ -257,8 +257,8 @@ $monster = @(
 	".pppppppppppqq..",
 	".qpppppppppqqq..",
 	".qqqqqqqqqqqqq..",
-	"..SSSSSSSSSSS...",
-	"...SSSSSSSS....."
+	"................",
+	"................"
 )
 $monsterBmp = New-Object System.Drawing.Bitmap $tile, $tile
 Draw-Frame $monsterBmp $monster $monsterMap 0 0 "monster"
