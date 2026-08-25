@@ -188,7 +188,11 @@ func die() -> void:
 
 	_notify_health_ui()
 
-	if dungeon and dungeon.has_method("respawn_player"):
+	# 作业 5（第 5 课）：死亡重置本层（钥匙/宝箱/怪物复原）；
+	# 无此方法时回退轻惩罚（仅回入口）。generate 内部会重置位置与状态
+	if dungeon and dungeon.has_method("reset_current_layer"):
+		dungeon.reset_current_layer()
+	elif dungeon and dungeon.has_method("respawn_player"):
 		dungeon.respawn_player()
 
 	# 死亡重生保护比普通无敌稍长

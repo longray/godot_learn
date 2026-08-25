@@ -1033,9 +1033,17 @@ func _on_monster_body_entered(body: Node2D, area: Area2D) -> void:
 
 
 func respawn_player() -> void:
-	# 第 5 课：玩家死亡后重生到入口（由 Player.die() 调用）
+	# 第 5 课：玩家死亡后重生到入口（轻惩罚版，保留）
 	if is_instance_valid(player_instance):
 		player_instance.global_position = get_entrance_world_position()
+
+
+func reset_current_layer() -> void:
+	# 作业 5（第 5 课）：死亡重置本层——钥匙/宝箱/怪物全部复原重来
+	# 固定种子下 generate() 产出完全相同的层（玩家记忆保留，仅进度清零）；
+	# 随机种子下等于换新层（更狠的 roguelike 惩罚）
+	print("本层已重置！钥匙宝箱怪物全部复原。")
+	generate()
 
 
 func _remove_entity(entity: Node) -> void:
@@ -1187,7 +1195,13 @@ func _make_patrol_points(cell: Vector2i) -> Array:
 
 		if not ring.is_empty():
 			# 环游顺序打乱 → 路径自然交叉，像乱逛而非巡逻兵
-			ring.shuffle()
+			# 踩坑：Array.shuffle() 走全局 RNG（不受种子控制）——改用 main.rng
+			# 手写 Fisher-Yates，保证同种子顺序可复现（C# 可对齐）
+			for i in range(ring.size() - 1, 0, -1):
+				var j := rng.randi_range(0, i)
+				var tmp := ring[i]
+				ring[i] = ring[j]
+				ring[j] = tmp
 
 			points.append(get_cell_world_position(cell))
 			for rc in ring:
