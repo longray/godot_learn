@@ -299,14 +299,14 @@ $monsterBmp.Dispose()
 # 玩家/敌人共用（动态生物不画进素材——动画会缩放影子）
 # =========================================================
 $shadowBmp = New-Object System.Drawing.Bitmap $tile, $tile
-$shCx = 8.0; $shCy = 12.0; $shRx = 5.5; $shRy = 2.5; $shMaxA = 120
+$shCx = 8.0; $shCy = 12.0; $shRx = 5.5; $shRy = 2.5; $shMaxA = 255
 for ($y = 0; $y -lt $tile; $y++) {
 	for ($x = 0; $x -lt $tile; $x++) {
 		$dx = ($x - $shCx) / $shRx
 		$dy = ($y - $shCy) / $shRy
 		$d = [math]::Sqrt($dx * $dx + $dy * $dy)
 		if ($d -lt 1.0) {
-			$a = [int]($shMaxA * (1.0 - $d))   # 线性衰减：中心 120 → 边缘 0
+			$a = [int]($shMaxA * (1.0 - $d))   # 线性衰减：中心 255 → 边缘 0
 			$shadowBmp.SetPixel($x, $y, [System.Drawing.Color]::FromArgb($a, 10, 15, 30))
 		}
 	}
