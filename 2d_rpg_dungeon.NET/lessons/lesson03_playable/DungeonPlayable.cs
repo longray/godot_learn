@@ -119,6 +119,13 @@ public partial class DungeonPlayable : Node2D
 	// HUD 引用（场景里的 CanvasLayer > Label）
 	private Label _keyLabel;
 	private Label _treasureLabel;
+	private HBoxContainer _healthUi;
+
+	// 作业 1（第 5 课）：心形图标纹理
+	private static readonly Texture2D HeartFullTexture =
+		GD.Load<Texture2D>("res://assets/sprites/heart_full.png");
+	private static readonly Texture2D HeartEmptyTexture =
+		GD.Load<Texture2D>("res://assets/sprites/heart_empty.png");
 
 	// 像素素材（assets/sprites/generate_sprites.ps1 生成，16x16 透明背景）
 	private static readonly Texture2D KeyTexture =
@@ -152,6 +159,9 @@ public partial class DungeonPlayable : Node2D
 
 	public int EntityCount => _dynamicEntities.Count;
 
+	// GDScript 互操作访问器（私有 List 不编组；验证/调试用）
+	public Node GetEntity(int index) => _dynamicEntities[index];
+
 	// GDScript 互操作访问器（C# List 属性不自动编组，需方法暴露）
 	public int TreasureCellCount => TreasureCells.Count;
 
@@ -165,6 +175,7 @@ public partial class DungeonPlayable : Node2D
 		_pathOverlay = GetNodeOrNull<PathOverlay>("PathOverlay");
 		_keyLabel = GetNodeOrNull<Label>("HUD/KeyLabel");
 		_treasureLabel = GetNodeOrNull<Label>("HUD/TreasureLabel");
+		_healthUi = GetNodeOrNull<HBoxContainer>("HUD/HealthUI");
 
 		if (_tileLayer == null)
 		{
@@ -1202,7 +1213,7 @@ public partial class DungeonPlayable : Node2D
 
 		foreach (Vector2I cell in MonsterCells)
 		{
-			SpawnEnemy(cell);
+			SpawnMonsterAtCell(cell);
 		}
 	}
 
@@ -1266,17 +1277,20 @@ public partial class DungeonPlayable : Node2D
 		return area;
 	}
 
-	private void SpawnEnemy(Vector2I cell)
+	private void SpawnMonsterAtCell(Vector2I cell)
 	{
-		// 作业 5：实例化真正的敌人场景（CharacterBody2D + PlayerTouched 信号）
+		// 第 5 课：实例化巡逻敌人（Setup 注入地图引用 + 巡逻路径）
 		if (EnemyScene != null)
 		{
 			var enemy = EnemyScene.Instantiate<CharacterBody2D>();
+
 			if (enemy is Enemy e)
 			{
-				e.Position = CellToCenterLocal(cell);
-				e.PlayerTouched += OnEnemyPlayerTouched;
-				_tileLayer.AddChild(e);
+				AddChild(e);
+
+				e.GlobalPosition = GetCellWorldPosition(cell);
+				e.Setup(this, MakePatrolPoints(cell));
+
 				_dynamicEntities.Add(e);
 				return;
 			}
@@ -1349,24 +1363,19 @@ public partial class DungeonPlayable : Node2D
 
 	private void OnMonsterBodyEntered(Node2D body)
 	{
-		GD.Print("碰到怪物！回到入口。");
-
-		// 本课规则：碰到怪物 → 传送回入口（后续课程升级为扣血/战斗）
-		if (GodotObject.IsInstanceValid(_playerInstance))
+		// 第 5 课（5.8）：回退危险区也走 TakeDamage（掉血+击退+无敌）
+		if (body is Player p)
 		{
-			_playerInstance.GlobalPosition = GetEntranceWorldPosition();
+			p.TakeDamage(1, body.GlobalPosition);
 		}
-	}
-
-	private void OnEnemyPlayerTouched()
-	{
-		// 作业 5：敌人场景信号回调（行为与 OnMonsterBodyEntered 一致）
-		// 惩罚逻辑集中在此，下一课升级战斗系统时只改这一处
-		GD.Print("碰到怪物！回到入口。");
-
-		if (GodotObject.IsInstanceValid(_playerInstance))
+		else
 		{
-			_playerInstance.GlobalPosition = GetEntranceWorldPosition();
+			GD.Print("碰到怪物！回到入口。");
+
+			if (GodotObject.IsInstanceValid(_playerInstance))
+			{
+				_playerInstance.GlobalPosition = GetEntranceWorldPosition();
+			}
 		}
 	}
 
@@ -1452,6 +1461,9 @@ public partial class DungeonPlayable : Node2D
 
 		_playerInstance.GlobalPosition = GetEntranceWorldPosition();
 		_playerInstance.Dungeon = this;
+
+		// 第 5 课（5.7）：每层重置玩家生命/无敌/击退状态
+		_playerInstance.ResetForNewLayer();
 	}
 
 	// =========================
@@ -1493,6 +1505,186 @@ public partial class DungeonPlayable : Node2D
 	// =========================
 	// 移动阻挡查询
 	// =========================
+
+	public Vector2 GetCellWorldPosition(Vector2I cell)
+	{
+		if (_tileLayer == null)
+		{
+			return CellToCenterLocal(cell);
+		}
+
+		return _tileLayer.ToGlobal(CellToCenterLocal(cell));
+	}
+
+	private Vector2[] MakePatrolPoints(Vector2I cell)
+	{
+		// 第 5 课改进：房间内多点环游巡逻（A→B→C→…→A）
+		// 生成期消耗 _rng（同种子可复现）；位于 POI 选点之后，不影响地图/POI 统计
+		List<Vector2> points = new();
+
+		Rect2I room = FindRoomContainingCell(cell);
+
+		if (room.Size != Vector2I.Zero)
+		{
+			List<Vector2I> candidates = new();
+
+			for (int y = room.Position.Y; y < room.Position.Y + room.Size.Y; y++)
+			{
+				for (int x = room.Position.X; x < room.Position.X + room.Size.X; x++)
+				{
+					var c = new Vector2I(x, y);
+					if (c != cell && IsCellAvailable(c))
+					{
+						candidates.Add(c);
+					}
+				}
+			}
+
+			List<Vector2I> ring = new();
+
+			Vector2I centerCell = RoomCenter(room);
+			if (centerCell != cell && IsCellAvailable(centerCell))
+			{
+				ring.Add(centerCell);
+			}
+
+			int extra = Mathf.Clamp(candidates.Count / 4, 2, 3);
+			for (int i = 0; i < extra && candidates.Count > 0; i++)
+			{
+				int idx = _rng.RandiRange(0, candidates.Count - 1);
+				Vector2I pick = candidates[idx];
+				candidates.RemoveAt(idx);
+				if (!ring.Contains(pick))
+				{
+					ring.Add(pick);
+				}
+			}
+
+			if (ring.Count > 0)
+			{
+				// Fisher-Yates with _rng（Array.shuffle 走全局 RNG 不受种子控制）
+				for (int i = ring.Count - 1; i > 0; i--)
+				{
+					int j = _rng.RandiRange(0, i);
+					(ring[i], ring[j]) = (ring[j], ring[i]);
+				}
+
+				points.Add(GetCellWorldPosition(cell));
+				foreach (Vector2I rc in ring)
+				{
+					points.Add(GetCellWorldPosition(rc));
+				}
+				return points.ToArray();
+			}
+		}
+
+		// 不在房间/候选为空：沿上下左右找可走方向做短距离巡逻
+		Vector2I[] directions =
+		{
+			new(1, 0), new(-1, 0), new(0, 1), new(0, -1),
+		};
+
+		foreach (Vector2I dir in directions)
+		{
+			Vector2I[] forward = ScanWalkableCells(cell, dir, 5);
+
+			if (forward.Length > 0)
+			{
+				points.Add(GetCellWorldPosition(cell));
+				points.Add(GetCellWorldPosition(forward[^1]));
+				return points.ToArray();
+			}
+
+			Vector2I[] backward = ScanWalkableCells(cell, -dir, 5);
+
+			if (backward.Length > 0)
+			{
+				points.Add(GetCellWorldPosition(cell));
+				points.Add(GetCellWorldPosition(backward[^1]));
+				return points.ToArray();
+			}
+		}
+
+		// 实在找不到巡逻路径，就原地站立
+		points.Add(GetCellWorldPosition(cell));
+		return points.ToArray();
+	}
+
+	private Rect2I FindRoomContainingCell(Vector2I cell)
+	{
+		foreach (Rect2I room in _rooms)
+		{
+			if (RoomHasCell(room, cell))
+			{
+				return room;
+			}
+		}
+
+		return default;
+	}
+
+	private static bool RoomHasCell(Rect2I room, Vector2I cell)
+	{
+		return cell.X >= room.Position.X
+			&& cell.X < room.Position.X + room.Size.X
+			&& cell.Y >= room.Position.Y
+			&& cell.Y < room.Position.Y + room.Size.Y;
+	}
+
+	private Vector2I[] ScanWalkableCells(Vector2I fromCell, Vector2I dir, int maxSteps)
+	{
+		List<Vector2I> result = new();
+
+		Vector2I cell = fromCell + dir;
+
+		for (int i = 0; i < maxSteps; i++)
+		{
+			if (IsCellWalkable(cell))
+			{
+				result.Add(cell);
+				cell += dir;
+			}
+			else
+			{
+				break;
+			}
+		}
+
+		return result.ToArray();
+	}
+
+	public void RespawnPlayer()
+	{
+		// 第 5 课：玩家死亡后重生到入口（轻惩罚版，保留）
+		if (GodotObject.IsInstanceValid(_playerInstance))
+		{
+			_playerInstance.GlobalPosition = GetEntranceWorldPosition();
+		}
+	}
+
+	public void ResetCurrentLayer()
+	{
+		// 作业 5（第 5 课）：死亡重置本层——钥匙/宝箱/怪物全部复原重来
+		GD.Print("本层已重置！钥匙宝箱怪物全部复原。");
+		Generate();
+	}
+
+	public void UpdateHealthUi(int current, int maxValue)
+	{
+		// 作业 1（第 5 课）：按当前生命点亮/熄灭心形
+		if (_healthUi == null)
+		{
+			return;
+		}
+
+		for (int i = 0; i < _healthUi.GetChildCount(); i++)
+		{
+			if (_healthUi.GetChildOrNull<TextureRect>(i) is { } heart)
+			{
+				heart.Texture = i < current ? HeartFullTexture : HeartEmptyTexture;
+			}
+		}
+	}
 
 	public bool IsWorldPositionWalkable(Vector2 worldPosition, float radius = 0.0f)
 	{

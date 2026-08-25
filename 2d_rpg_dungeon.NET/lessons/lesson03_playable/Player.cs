@@ -25,6 +25,17 @@ public partial class Player : CharacterBody2D
 	public DungeonPlayable Dungeon { get; set; }
 
 	// =========================
+	// 第 5 课：生命与受伤
+	// =========================
+
+	[Export] public int MaxHealth { get; set; } = 3;
+	[Export] public float InvincibilityTime { get; set; } = 0.8f;
+
+	public int Health { get; private set; } = 3;
+	public bool Invincible { get; private set; }
+	public Vector2 Knockback { get; private set; }
+
+	// =========================
 	// 四向行走动画（spritesheet 3 列 = 迈A/站立/迈B，3 行 = 下/上/侧面）
 	// =========================
 
@@ -46,6 +57,17 @@ public partial class Player : CharacterBody2D
 	{
 		_sprite = GetNode<Sprite2D>("Sprite2D");
 		_camera = GetNode<Camera2D>("Camera2D");
+		Health = MaxHealth;
+	}
+
+	public void ResetForNewLayer()
+	{
+		Health = MaxHealth;
+		Invincible = false;
+		Knockback = Vector2.Zero;
+		Modulate = new Color(Modulate.R, Modulate.G, Modulate.B, 1.0f);
+
+		NotifyHealthUi();
 	}
 
 	public override void _UnhandledInput(InputEvent @event)
@@ -126,47 +148,50 @@ public partial class Player : CharacterBody2D
 			"move_down"
 		);
 
-		if (inputVector == Vector2.Zero)
+		Vector2 desiredVelocity = inputVector == Vector2.Zero
+			? Vector2.Zero
+			: inputVector.Normalized() * Speed;
+
+		// 第 5 课：移动 = 意图速度 + 击退速度（击退随时间衰减）
+		Vector2 moveVelocity = desiredVelocity + Knockback;
+		Knockback = Knockback.MoveToward(Vector2.Zero, 500.0f * dt);
+
+		if (moveVelocity == Vector2.Zero)
 		{
 			Velocity = Vector2.Zero;
 			MoveAndSlide();
-			UpdateSpriteAnimation(Vector2.Zero, dt);
+			UpdateSpriteAnimation(inputVector, dt);
 			return;
 		}
 
-		Vector2 desiredVelocity = inputVector.Normalized() * Speed;
-
-		// 作业 5：物理碰撞模式——直接设速度，阻挡交给 TileSet 物理层 + MoveAndSlide
+		// 第 3 课作业 5：物理碰撞模式——阻挡交给 TileSet 物理层 + MoveAndSlide
 		if (UsePhysicsCollision)
 		{
-			Velocity = desiredVelocity;
+			Velocity = moveVelocity;
 			MoveAndSlide();
 			UpdateSpriteAnimation(inputVector, dt);
 			return;
 		}
 
 		// 数据驱动模式（第 3 课主体）：查询地图数据判断可走性
-		Vector2 nextPosition = GlobalPosition + desiredVelocity * dt;
+		Vector2 nextPosition = GlobalPosition + moveVelocity * dt;
 
-		// 如果目标位置可走，直接移动
 		if (Dungeon.IsWorldPositionWalkable(nextPosition, CollisionRadius))
 		{
-			Velocity = desiredVelocity;
+			Velocity = moveVelocity;
 		}
 		else
 		{
-			// 如果整体移动被挡住，尝试只移动 X 或只移动 Y
-			// 这样可以实现简单的贴墙滑动
 			Vector2 xOnlyPosition = new(nextPosition.X, GlobalPosition.Y);
 			Vector2 yOnlyPosition = new(GlobalPosition.X, nextPosition.Y);
 
 			if (Dungeon.IsWorldPositionWalkable(xOnlyPosition, CollisionRadius))
 			{
-				Velocity = new Vector2(desiredVelocity.X, 0.0f);
+				Velocity = new Vector2(moveVelocity.X, 0.0f);
 			}
 			else if (Dungeon.IsWorldPositionWalkable(yOnlyPosition, CollisionRadius))
 			{
-				Velocity = new Vector2(0.0f, desiredVelocity.Y);
+				Velocity = new Vector2(0.0f, moveVelocity.Y);
 			}
 			else
 			{
@@ -176,5 +201,79 @@ public partial class Player : CharacterBody2D
 
 		MoveAndSlide();
 		UpdateSpriteAnimation(inputVector, dt);
+	}
+
+	// =========================
+	// 第 5 课：受伤 / 死亡 / 无敌
+	// =========================
+
+	public void TakeDamage(int amount, Vector2 sourcePosition)
+	{
+		if (Invincible)
+		{
+			return;
+		}
+
+		Health -= amount;
+
+		GD.Print("玩家受伤，剩余生命：", Health);
+
+		NotifyHealthUi();
+
+		if (Health <= 0)
+		{
+			Die();
+			return;
+		}
+
+		ApplyKnockback(sourcePosition);
+		StartInvincibility(InvincibilityTime);
+	}
+
+	private void Die()
+	{
+		GD.Print("玩家死亡，回到入口。");
+
+		Health = MaxHealth;
+		Knockback = Vector2.Zero;
+
+		NotifyHealthUi();
+
+		// 作业 5（第 5 课）：死亡重置本层；无此方法时回退轻惩罚
+		if (Dungeon != null)
+		{
+			Dungeon.ResetCurrentLayer();
+		}
+	}
+
+	private void ApplyKnockback(Vector2 sourcePosition)
+	{
+		Vector2 direction = GlobalPosition - sourcePosition;
+
+		if (direction == Vector2.Zero)
+		{
+			direction = Vector2.Right;
+		}
+
+		Knockback = direction.Normalized() * 180.0f;
+	}
+
+	private async void StartInvincibility(float duration)
+	{
+		Invincible = true;
+		Modulate = new Color(Modulate.R, Modulate.G, Modulate.B, 0.45f);
+
+		await ToSignal(GetTree().CreateTimer(duration), SceneTreeTimer.SignalName.Timeout);
+
+		if (IsInsideTree())
+		{
+			Invincible = false;
+			Modulate = new Color(Modulate.R, Modulate.G, Modulate.B, 1.0f);
+		}
+	}
+
+	private void NotifyHealthUi()
+	{
+		Dungeon?.UpdateHealthUi(Health, MaxHealth);
 	}
 }
