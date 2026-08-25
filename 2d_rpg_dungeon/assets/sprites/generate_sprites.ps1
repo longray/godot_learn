@@ -203,12 +203,12 @@ Save-AndVerify $sheet (Join-Path $outDir "player_sheet.png") ($tile * 3) ($tile 
 $sheet.Dispose()
 
 # =========================================================
-# 钥匙：金钥匙三档渐变（亮金/金/暗金）+ 底部半透明阴影（悬浮道具感）
-# L=亮金 G=金 g=暗金 S=阴影(半透明)
+# 钥匙：金钥匙三档渐变（亮金/金/暗金）+ 底部两档渐变阴影（悬浮道具感）
+# L=亮金 G=金 g=暗金 S=深影(110) s=浅影(70)
 # =========================================================
 $keyMap = New-ColorMap `
 	@("L", @(255, 240, 155)) @("G", @(245, 205, 70)) @("g", @(190, 155, 45)) `
-	@("S", @(15, 20, 35, 110))
+	@("S", @(15, 20, 35, 110)) @("s", @(15, 20, 35, 70))
 $key = @(
 	"................",
 	".....LGGGg......",
@@ -225,7 +225,7 @@ $key = @(
 	".......LGg......",
 	"......LGgGg.....",
 	"......Lg.Lg.....",
-	"...SSSSSSSSSS..."
+	"....sSSSSSs....."
 )
 $keyBmp = New-Object System.Drawing.Bitmap $tile, $tile
 Draw-Frame $keyBmp $key $keyMap 0 0 "key"
@@ -233,13 +233,13 @@ Save-AndVerify $keyBmp (Join-Path $outDir "key.png") $tile $tile
 $keyBmp.Dispose()
 
 # =========================================================
-# 宝箱：木色四档 + 锁高光 + 底部半透明阴影
-# N=亮木 W=木 w=中木 d=暗木 G=金边 L=锁亮 l=锁 S=阴影
+# 宝箱：木色四档 + 锁高光 + 底部两档渐变阴影
+# N=亮木 W=木 w=中木 d=暗木 G=金边 L=锁亮 l=锁 S=深影 s=浅影
 # =========================================================
 $chestMap = New-ColorMap `
 	@("N", @(178, 132, 84)) @("W", @(150, 105, 60)) @("w", @(120, 82, 45)) @("d", @(85, 58, 32)) `
 	@("G", @(240, 200, 60)) @("L", @(240, 248, 255)) @("l", @(200, 212, 225)) `
-	@("S", @(15, 20, 35, 110))
+	@("S", @(15, 20, 35, 110)) @("s", @(15, 20, 35, 70))
 $chest = @(
 	"................",
 	"....NWWWWWW.....",
@@ -255,8 +255,8 @@ $chest = @(
 	".WwwwwwwwwwwwW..",
 	".WWwwwwwwwwwWW..",
 	".ddddddddddddd..",
-	"..SSSSSSSSSSS...",
-	"...SSSSSSSS....."
+	"..sSSSSSSSSSs...",
+	"...sSSSSSSs....."
 )
 $chestBmp = New-Object System.Drawing.Bitmap $tile, $tile
 Draw-Frame $chestBmp $chest $chestMap 0 0 "chest"
@@ -293,6 +293,26 @@ $monsterBmp = New-Object System.Drawing.Bitmap $tile, $tile
 Draw-Frame $monsterBmp $monster $monsterMap 0 0 "monster"
 Save-AndVerify $monsterBmp (Join-Path $outDir "monster.png") $tile $tile
 $monsterBmp.Dispose()
+
+# =========================================================
+# 柔和阴影纹理：径向渐变椭圆（中心深 → 边缘平滑衰减到透明）
+# 玩家/敌人共用（动态生物不画进素材——动画会缩放影子）
+# =========================================================
+$shadowBmp = New-Object System.Drawing.Bitmap $tile, $tile
+$shCx = 8.0; $shCy = 12.0; $shRx = 5.5; $shRy = 2.5; $shMaxA = 95
+for ($y = 0; $y -lt $tile; $y++) {
+	for ($x = 0; $x -lt $tile; $x++) {
+		$dx = ($x - $shCx) / $shRx
+		$dy = ($y - $shCy) / $shRy
+		$d = [math]::Sqrt($dx * $dx + $dy * $dy)
+		if ($d -lt 1.0) {
+			$a = [int]($shMaxA * (1.0 - $d))   # 线性衰减：中心 95 → 边缘 0
+			$shadowBmp.SetPixel($x, $y, [System.Drawing.Color]::FromArgb($a, 10, 15, 30))
+		}
+	}
+}
+Save-AndVerify $shadowBmp (Join-Path $outDir "shadow.png") $tile $tile
+$shadowBmp.Dispose()
 
 # 旧单帧 player.png 已被 player_sheet.png 取代（down-idle 帧），删除避免混淆
 $oldPlayer = Join-Path $outDir "player.png"
