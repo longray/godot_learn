@@ -64,6 +64,7 @@ $p = "D:\AboutGame\learn\2d_rpg_dungeon"
 ## 踩坑记录
 
 - **TileSet 碰撞坐标**：碰撞多边形坐标相对于 tile 中心（而非左上角），16×16 tile 应为 `PackedVector2Array(-8,-8, 8,-8, 8,8, -8,8)`，详见 `doc/notes/tileset_collision_coordinates.md`
+- **2D 节点层叠**：想让节点画在"角色下面"勿用 `z_index = -1`——有效 z 会低于 TileMapLayer(0) 被地板完全遮挡；正确做法是同层树序（Shadow 节点放 Sprite2D 之前，z 保持默认）
 - 无头 `-s` 脚本里 `add_child()` 后 `_ready()` **不会立即触发**（消息队列未刷新即 `quit()`）——测试要直接调 `generate()` 等方法，勿依赖 `_ready`
 - 无头测试中 `make_current()` 报 `!enabled || !is_inside_tree()` 属预期（节点不在树），RID 泄漏警告同理，均无害
 - MCP `project_run` 后 game helper 注册慢于 3 秒就绪窗口：等 ~10s 再轮询 `editor_state`，见 `helper_live=true` 才做按键/截图
