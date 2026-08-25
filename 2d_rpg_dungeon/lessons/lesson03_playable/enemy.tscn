@@ -14,7 +14,6 @@ radius = 6.4
 script = ExtResource("1_enemy")
 
 [node name="Shadow" type="Sprite2D" parent="."]
-z_index = -1
 position = Vector2(0, 4)
 texture = ExtResource("3_shadow")
 
