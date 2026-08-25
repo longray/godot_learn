@@ -7,7 +7,11 @@ extends CharacterBody2D
 # =========================
 
 @export var speed: float = 70.0
-@export var wait_time: float = 0.8
+
+# 到点停顿随机区间（运行期随机——每次玩不同，打破机械节奏）
+@export var wait_time_min: float = 0.4
+@export var wait_time_max: float = 1.2
+
 @export var arrival_distance: float = 4.0
 @export var collision_radius: float = 4.0
 @export var contact_damage: int = 1
@@ -32,10 +36,11 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	# 史莱姆呼吸：轻微正弦缩放
+	# 史莱姆呼吸：轻微正弦缩放；移动时呼吸加速加剧（赶路感），停顿时慢喘
 	# 只缩 Sprite2D 不缩根节点——根 scale 会连带缩放子节点碰撞体，破坏触发半径
-	_t += delta
-	var s := 1.0 + 0.08 * sin(_t * 3.0)
+	_t += delta * (2.2 if velocity != Vector2.ZERO else 1.0)
+	var amp := 0.10 if velocity != Vector2.ZERO else 0.08
+	var s := 1.0 + amp * sin(_t * 3.0)
 	sprite.scale = Vector2(s, s)
 
 
@@ -85,9 +90,9 @@ func _physics_process(delta: float) -> void:
 	var distance: float = direction.length()
 
 	if distance <= arrival_distance:
-		# 到点：停顿后换下一个巡逻点
+		# 到点：随机停顿后换下一个巡逻点（每点时长不同 → 打破节奏）
 		is_waiting = true
-		wait_remaining = wait_time
+		wait_remaining = randf_range(wait_time_min, wait_time_max)
 		velocity = Vector2.ZERO
 		move_and_slide()
 		return

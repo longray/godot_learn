@@ -1135,21 +1135,48 @@ func get_cell_world_position(cell: Vector2i) -> Vector2:
 
 
 func _make_patrol_points(cell: Vector2i) -> Array:
-	# 第 5 课：为敌人生成巡逻路径（纯确定性扫描，零 RNG 消耗）
+	# 第 5 课改进：房间内多点环游巡逻（A→B→C→…→A），替代两点往返
+	# 生成期消耗 main.rng（同种子可复现）；位于 POI 选点之后，不影响地图/POI 统计
 	var points: Array = []
 
-	# 优先在敌人所在房间里巡逻：敌人出生点 <-> 房间中心
 	var room := _find_room_containing_cell(cell)
 
 	if room.size != Vector2i.ZERO:
-		var center_cell := _room_center(room)
+		# 候选 = 房间内可走且未被 POI 占用的格子
+		var candidates: Array[Vector2i] = []
+		for y in range(room.position.y, room.position.y + room.size.y):
+			for x in range(room.position.x, room.position.x + room.size.x):
+				var c := Vector2i(x, y)
+				if c != cell and _is_cell_available(c):
+					candidates.append(c)
 
-		if center_cell != cell and is_cell_walkable(center_cell):
+		# 中心点优先入环（巡视必经），可用则插入
+		var center_cell := _room_center(room)
+		var ring: Array[Vector2i] = []
+		if center_cell != cell and _is_cell_available(center_cell):
+			ring.append(center_cell)
+
+		# 从候选随机补 2~3 个点（小房间自动少补）
+		var extra: int = clampi(candidates.size() / 4, 2, 3)
+		for i in extra:
+			if candidates.is_empty():
+				break
+			var idx := rng.randi_range(0, candidates.size() - 1)
+			var pick := candidates[idx]
+			candidates.remove_at(idx)
+			if not ring.has(pick):
+				ring.append(pick)
+
+		if not ring.is_empty():
+			# 环游顺序打乱 → 路径自然交叉，像乱逛而非巡逻兵
+			ring.shuffle()
+
 			points.append(get_cell_world_position(cell))
-			points.append(get_cell_world_position(center_cell))
+			for rc in ring:
+				points.append(get_cell_world_position(rc))
 			return points
 
-	# 不在房间/中心不可用：沿上下左右找可走方向做短距离巡逻
+	# 不在房间/候选为空：沿上下左右找可走方向做短距离巡逻（保留原逻辑）
 	var directions := [
 		Vector2i(1, 0),
 		Vector2i(-1, 0),
