@@ -17,8 +17,9 @@ extends CharacterBody2D
 @export var contact_damage: int = 1
 
 # 作业 3：发现玩家追击（半径 80px；脱离需 1.25 倍——滞回防抖，边缘反复横跳）
+# 倍率 1.15：fast 126 / normal 80 / tank 52——全员低于玩家 140，风筝普适
 @export var chase_radius: float = 80.0
-@export var chase_speed_multiplier: float = 1.4
+@export var chase_speed_multiplier: float = 1.15
 
 # 接触伤害判定半径（≈ Hitbox 6.4 + 玩家碰撞体 5）
 @export var contact_range: float = 11.0

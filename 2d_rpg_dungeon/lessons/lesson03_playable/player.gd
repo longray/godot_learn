@@ -133,9 +133,10 @@ func _physics_process(delta: float) -> void:
 	var desired_velocity := Vector2.ZERO
 	if input_vector != Vector2.ZERO:
 		desired_velocity = input_vector.normalized() * speed
-		facing = input_vector.normalized()  # 第 6 课：攻击朝向随移动更新
+		# 朝向（动画用）随移动更新；攻击朝向独立——见 _attack()（鼠标指向）
+		facing = input_vector.normalized()
 
-	# 第 6 课：攻击（冷却中不可发；朝向前方生成临时攻击区域）
+	# 第 6 课：攻击（冷却中不可发）
 	attack_cooldown_remaining = maxf(0.0, attack_cooldown_remaining - delta)
 
 	if Input.is_action_just_pressed(ATTACK_ACTION) and attack_cooldown_remaining <= 0.0:
@@ -236,6 +237,12 @@ func heal(amount: int) -> void:
 
 func _attack() -> void:
 	# 第 6 课：朝向前方生成临时攻击 Area2D（存在 attack_duration 后销毁）
+	# 攻击朝向与移动朝向解耦：鼠标指哪砍哪（后退反手砍，风筝战术成立）
+	var aim := get_global_mouse_position() - global_position
+	if aim.length_squared() > 1.0:
+		facing = aim.normalized()
+	# 鼠标贴在玩家身上（零向量）→ 沿用上次 facing
+
 	attack_cooldown_remaining = attack_cooldown
 
 	var hitbox := Area2D.new()
