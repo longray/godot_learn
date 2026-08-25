@@ -20,11 +20,49 @@ extends CharacterBody2D
 # 由 Main 场景注入
 var dungeon: Node
 
+# =========================
+# 四向行走动画（作业延伸：spritesheet 3 列 = 迈A/站立/迈B，3 行 = 下/上/侧面）
+# =========================
+
+const DIR_ROW := {"down": 0, "up": 1, "side": 2}
+
+# 步态循环：迈A → 站立 → 迈B → 站立（经典 RPG 四拍）
+const FRAME_SEQ := [0, 1, 2, 1]
+
+@export var walk_fps: float = 8.0
+
+var _anim_t := 0.0
+
+@onready var sprite: Sprite2D = $Sprite2D
+
+
+func _update_sprite_animation(input_vector: Vector2, delta: float) -> void:
+	# 方向判定：水平优先（与斜向移动的视觉直觉一致）；左右共用侧面行
+	var row := 0
+	var flip := false
+
+	if absf(input_vector.x) > absf(input_vector.y):
+		row = DIR_ROW["side"]
+		flip = input_vector.x < 0.0
+	elif not is_zero_approx(input_vector.y):
+		row = DIR_ROW["up"] if input_vector.y < 0.0 else DIR_ROW["down"]
+
+	sprite.flip_h = flip
+
+	if input_vector == Vector2.ZERO:
+		_anim_t = 0.0
+		sprite.frame = row * 3 + 1  # idle = 中间列
+	else:
+		_anim_t += delta
+		var col: int = FRAME_SEQ[floori(_anim_t * walk_fps) % FRAME_SEQ.size()]
+		sprite.frame = row * 3 + col
+
 
 func _physics_process(delta: float) -> void:
 	if dungeon == null or not dungeon.has_method("is_world_position_walkable"):
 		velocity = Vector2.ZERO
 		move_and_slide()
+		_update_sprite_animation(Vector2.ZERO, delta)
 		return
 
 	# 作业 1：自定义动作 move_*（WASD + 方向键双绑定，Input Map 中配置）
@@ -38,6 +76,7 @@ func _physics_process(delta: float) -> void:
 	if input_vector == Vector2.ZERO:
 		velocity = Vector2.ZERO
 		move_and_slide()
+		_update_sprite_animation(Vector2.ZERO, delta)
 		return
 
 	var desired_velocity := input_vector.normalized() * speed
@@ -46,6 +85,7 @@ func _physics_process(delta: float) -> void:
 	if use_physics_collision:
 		velocity = desired_velocity
 		move_and_slide()
+		_update_sprite_animation(input_vector, delta)
 		return
 
 	# 数据驱动模式（第 3 课主体）：查询地图数据判断可走性
@@ -68,3 +108,4 @@ func _physics_process(delta: float) -> void:
 			velocity = Vector2.ZERO
 
 	move_and_slide()
+	_update_sprite_animation(input_vector, delta)
