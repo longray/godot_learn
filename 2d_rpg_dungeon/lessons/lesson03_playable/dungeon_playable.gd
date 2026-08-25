@@ -591,6 +591,18 @@ func _update_or_spawn_exit() -> void:
 		exit_area.add_child(collision)
 		exit_area.body_entered.connect(_on_exit_body_entered)
 
+		# 作业 4：出口锁状态覆盖层（红=锁定 / 绿=解锁，_update_exit_lock_visual 刷新颜色）
+		var lock_overlay := Polygon2D.new()
+		lock_overlay.name = "LockOverlay"
+		var half := cell_size * 0.5
+		lock_overlay.polygon = PackedVector2Array([
+			Vector2(-half, -half),
+			Vector2(half, -half),
+			Vector2(half, half),
+			Vector2(-half, half)
+		])
+		exit_area.add_child(lock_overlay)
+
 		tile_layer.add_child(exit_area)
 	else:
 		var collision := exit_area.get_child(0) as CollisionShape2D
@@ -600,6 +612,22 @@ func _update_or_spawn_exit() -> void:
 				circle.radius = cell_size * exit_radius_multiplier
 
 	exit_area.position = get_exit_local_position()
+	_update_exit_lock_visual()
+
+
+func _update_exit_lock_visual() -> void:
+	# 作业 4：出口覆盖层随钥匙状态变色（锁定=红半透明，解锁=绿半透明）
+	if exit_area == null or not is_instance_valid(exit_area):
+		return
+
+	var overlay := exit_area.get_node_or_null("LockOverlay") as Polygon2D
+	if overlay == null:
+		return
+
+	if has_key:
+		overlay.color = Color(0.3, 1.0, 0.4, 0.45)
+	else:
+		overlay.color = Color(1.0, 0.25, 0.25, 0.45)
 
 
 func _on_exit_body_entered(body: Node2D) -> void:
@@ -944,6 +972,7 @@ func _on_key_body_entered(body: Node2D, area: Area2D) -> void:
 	print("拿到了钥匙！出口已解锁。")
 
 	_update_hud()
+	_update_exit_lock_visual()
 	_remove_entity(area)
 
 
