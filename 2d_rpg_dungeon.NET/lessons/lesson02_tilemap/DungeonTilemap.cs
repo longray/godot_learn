@@ -489,12 +489,17 @@ public partial class DungeonTilemap : Node2D
 			return -1;
 		}
 
-		source.CreateTile(new Vector2I(0, 0)); // floor
-		source.CreateTile(new Vector2I(1, 0)); // wall
-		source.CreateTile(new Vector2I(2, 0)); // entrance
-		source.CreateTile(new Vector2I(3, 0)); // exit
+			source.CreateTile(new Vector2I(0, 0)); // floor
+			source.CreateTile(new Vector2I(1, 0)); // wall
+			source.CreateTile(new Vector2I(2, 0)); // entrance
+			source.CreateTile(new Vector2I(3, 0)); // exit
 
-		TileLayer.TileSet = tileSet;
+			// 踩坑：如需添加物理碰撞层，碰撞多边形坐标必须相对于 tile 中心（而非左上角）
+			// Pitfall: TileSet collision polygon coordinates are relative to tile center, not top-left
+			// 例如 16×16 tile 的碰撞多边形应为：PackedVector2Array(-8,-8, 8,-8, 8,8, -8,8)
+			// 详见：doc/notes/tileset_collision_coordinates.md
+
+			TileLayer.TileSet = tileSet;
 
 		return sourceId;
 	}

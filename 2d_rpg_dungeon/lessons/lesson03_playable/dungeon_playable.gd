@@ -471,6 +471,11 @@ func _create_placeholder_tileset() -> int:
 	source.create_tile(Vector2i(2, 0)) # entrance
 	source.create_tile(Vector2i(3, 0)) # exit
 
+	# 踩坑：如需添加物理碰撞层，碰撞多边形坐标必须相对于 tile 中心（而非左上角）
+	# Pitfall: TileSet collision polygon coordinates are relative to tile center, not top-left
+	# 例如 16×16 tile 的碰撞多边形应为：PackedVector2Array(-8,-8, 8,-8, 8,8, -8,8)
+	# 详见：doc/notes/tileset_collision_coordinates.md
+
 	tile_layer.tile_set = tile_set
 
 	return source_id

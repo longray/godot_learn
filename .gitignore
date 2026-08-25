@@ -7,3 +7,9 @@
 
 # OpenCode 本地会话状态
 .omo/
+
+# Godot extension API dump（防卡调试用，本地保留不提交）
+2d_rpg_dungeon/extension_api.json
+
+# 用户手动截图（本地资料）
+手动截图/

@@ -8,9 +8,15 @@ Godot 4.7 程序化 RPG 地图生成的**学习仓库**（git 仓库，已推送
 
 ```text
 doc/lession/          课程文档（用户逐课提供，先审核再执行）
+doc/notes/            技术笔记（具体实现细节，用 grep 搜索）
 2d_rpg_dungeon/       GDScript 项目（当前活跃，含 addons/godot_ai MCP 插件）
 2d_rpg_dungeon.NET/   C# 版（**每课完成后立即同步重写**，非等大课程结束）
 ```
+
+**文档分层**：
+- **AGENTS.md**：核心约定（保持精简，<200 行）
+- **代码注释**：关键知识点（codegraph 可索引）
+- **doc/notes/**：详细解释（人类阅读，grep 搜索）
 
 ## 引擎（两套，勿混用）
 
@@ -35,6 +41,12 @@ $p = "D:\AboutGame\learn\2d_rpg_dungeon"
 & $g --headless --path $p --quit-after 10                            # 3. 冒烟运行（任何 SCRIPT ERROR = 失败）
 ```
 
+**防卡三铁律**（曾因脚本死循环挂起浪费大量时间，必须遵守）：
+
+1. `-s` 无头脚本**必须配 `--quit-after N`**（保底退出，防消息队列阻塞导致挂起）
+2. **API 前置验证**：调用不熟悉的 API 前先查 `2d_rpg_dungeon/extension_api.json`（`--dump-extension-api` 导出，已 gitignore），确认方法名/签名存在，避免运行时才报 `Nonexistent function`
+3. 无头测试命令**超时收紧至 60s**（超时即视为失败，勿加长等待）
+
 ## mono/C# 版（2d_rpg_dungeon.NET）工具链要点
 
 - csproj 必须与 project.godot 同目录；project.godot 需 `[dotnet] project/assembly_name="..."` 段
@@ -49,8 +61,9 @@ $p = "D:\AboutGame\learn\2d_rpg_dungeon"
 - `.gd` 缩进**只能用 TAB**，UTF-8 无 BOM（注释含中文）
 - 手写 `.tscn` 时：脚本引用用 `[ext_resource type="Script" path="res://..." id="..."]`；若脚本用 `^"NodeName"` 查找节点，该节点必须有 `unique_name_in_owner = true`
 
-## 已踩过的坑（验证过的事实）
+## 踩坑记录
 
+- **TileSet 碰撞坐标**：碰撞多边形坐标相对于 tile 中心（而非左上角），16×16 tile 应为 `PackedVector2Array(-8,-8, 8,-8, 8,8, -8,8)`，详见 `doc/notes/tileset_collision_coordinates.md`
 - 无头 `-s` 脚本里 `add_child()` 后 `_ready()` **不会立即触发**（消息队列未刷新即 `quit()`）——测试要直接调 `generate()` 等方法，勿依赖 `_ready`
 - 无头测试中 `make_current()` 报 `!enabled || !is_inside_tree()` 属预期（节点不在树），RID 泄漏警告同理，均无害
 - MCP `project_run` 后 game helper 注册慢于 3 秒就绪窗口：等 ~10s 再轮询 `editor_state`，见 `helper_live=true` 才做按键/截图
