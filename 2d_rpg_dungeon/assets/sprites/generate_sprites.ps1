@@ -314,6 +314,62 @@ for ($y = 0; $y -lt $tile; $y++) {
 Save-AndVerify $shadowBmp (Join-Path $outDir "shadow.png") $tile $tile
 $shadowBmp.Dispose()
 
+# =========================================================
+# 生命值 UI：心形图标（满心=亮红渐变 / 空心=暗灰空心）
+# R=主红 r=暗红 L=高光 E=空框 e=空底
+# =========================================================
+$heartFullMap = New-ColorMap `
+	@("R", @(220, 60, 70)) @("r", @(160, 35, 50)) @("L", @(255, 150, 160))
+$heartFull = @(
+	"................",
+	"................",
+	"..RRR....RRR....",
+	".RRRRR..RRRRR...",
+	".RLRRRRRRRRRr...",
+	".RLRRRRRRRRRr...",
+	".RLRRRRRRRRrr...",
+	"..RRRRRRRRrr....",
+	"..RRRRRRRRrr....",
+	"...RRRRRRrr.....",
+	"....RRRRrr......",
+	".....RRrr.......",
+	"......Rr........",
+	"................",
+	"................",
+	"................"
+)
+$heartEmptyMap = New-ColorMap `
+	@("E", @(90, 80, 90)) @("e", @(50, 44, 54))
+$heartEmpty = @(
+	"................",
+	"................",
+	"..EEE....EEE....",
+	".EEEEE..EEEEE...",
+	".EEeeeEEeeeeE...",
+	".EEeeeEEeeeeE...",
+	".EEeeeEEeeeeE...",
+	"..EEeEEEEEee....",
+	"..EEeEEEEEee....",
+	"...EEEEEee......",
+	"....EEEee.......",
+	".....EEe........",
+	"......E.........",
+	"................",
+	"................",
+	"................"
+)
+
+$outDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$heartFullBmp = New-Object System.Drawing.Bitmap $tile, $tile
+Draw-Frame $heartFullBmp $heartFull $heartFullMap 0 0 "heart_full"
+Save-AndVerify $heartFullBmp (Join-Path $outDir "heart_full.png") $tile $tile
+$heartFullBmp.Dispose()
+
+$heartEmptyBmp = New-Object System.Drawing.Bitmap $tile, $tile
+Draw-Frame $heartEmptyBmp $heartEmpty $heartEmptyMap 0 0 "heart_empty"
+Save-AndVerify $heartEmptyBmp (Join-Path $outDir "heart_empty.png") $tile $tile
+$heartEmptyBmp.Dispose()
+
 # 旧单帧 player.png 已被 player_sheet.png 取代（down-idle 帧），删除避免混淆
 $oldPlayer = Join-Path $outDir "player.png"
 if (Test-Path $oldPlayer) {

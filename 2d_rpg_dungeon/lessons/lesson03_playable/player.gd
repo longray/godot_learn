@@ -61,6 +61,8 @@ func reset_for_new_layer() -> void:
 	knockback = Vector2.ZERO
 	modulate.a = 1.0
 
+	_notify_health_ui()
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	# 滚轮推近/拉远（观察用）：上=推近，下=拉远
@@ -168,6 +170,8 @@ func take_damage(amount: int, source_position: Vector2) -> void:
 
 	print("玩家受伤，剩余生命：", health)
 
+	_notify_health_ui()
+
 	if health <= 0:
 		die()
 		return
@@ -182,11 +186,19 @@ func die() -> void:
 	health = max_health
 	knockback = Vector2.ZERO
 
+	_notify_health_ui()
+
 	if dungeon and dungeon.has_method("respawn_player"):
 		dungeon.respawn_player()
 
 	# 死亡重生保护比普通无敌稍长
 	_start_invincibility(invincibility_time * 1.5)
+
+
+func _notify_health_ui() -> void:
+	# 作业 1（第 5 课）：通知 HUD 刷新心形（dungeon 可能未注入，防御性检查）
+	if dungeon and dungeon.has_method("update_health_ui"):
+		dungeon.update_health_ui(health, max_health)
 
 
 func _apply_knockback(source_position: Vector2) -> void:

@@ -129,6 +129,11 @@ var dynamic_entities: Array[Node] = []
 # HUD 引用（场景里的 CanvasLayer > Label）
 @onready var key_label: Label = $HUD/KeyLabel
 @onready var treasure_label: Label = $HUD/TreasureLabel
+@onready var health_ui: HBoxContainer = $HUD/HealthUI
+
+# 作业 1（第 5 课）：心形图标纹理
+const HEART_FULL_TEXTURE: Texture2D = preload("res://assets/sprites/heart_full.png")
+const HEART_EMPTY_TEXTURE: Texture2D = preload("res://assets/sprites/heart_empty.png")
 
 
 func _ready() -> void:
@@ -1061,10 +1066,23 @@ func _update_hud(locked_hint: bool = false) -> void:
 		key_label.text = "钥匙：未获得（找金钥匙）"
 		key_label.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0))
 
-	# 作业 1：宝箱计数行（已开 / 总数；宝箱拾取后不回收格子，总数稳定）
-	if treasure_label != null:
-		treasure_label.text = "宝箱：%d/%d" % [treasure_count, treasure_cells.size()]
-		treasure_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4))
+		# 作业 1（第 5 课）：宝箱计数行（已开 / 总数；宝箱拾取后不回收格子，总数稳定）
+		if treasure_label != null:
+			treasure_label.text = "宝箱：%d/%d" % [treasure_count, treasure_cells.size()]
+			treasure_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4))
+
+
+func update_health_ui(current: int, max_value: int) -> void:
+	# 作业 1（第 5 课）：按当前生命点亮/熄灭心形（i < current 满心，否则空心）
+	if health_ui == null:
+		return
+
+	for i in health_ui.get_child_count():
+		var heart := health_ui.get_child(i) as TextureRect
+		if heart == null:
+			continue
+
+		heart.texture = HEART_FULL_TEXTURE if i < current else HEART_EMPTY_TEXTURE
 
 
 # =========================

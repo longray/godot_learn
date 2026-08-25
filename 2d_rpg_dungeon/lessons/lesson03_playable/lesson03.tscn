@@ -1,10 +1,12 @@
-[gd_scene format=3 uid="uid://cdk3wau04wocm"]
+[gd_scene load_steps=8 format=3 uid="uid://cdk3wau04wocm"]
 
 [ext_resource type="Script" uid="uid://bttsnjhyf20ym" path="res://lessons/lesson03_playable/dungeon_playable.gd" id="1_main"]
 [ext_resource type="TileSet" uid="uid://cu7s624kw70bb" path="res://assets/tiles/dungeon_tiles.tres" id="2_tiles"]
 [ext_resource type="PackedScene" path="res://lessons/lesson03_playable/player.tscn" id="3_player"]
 [ext_resource type="Script" uid="uid://d1wowjicq0rdx" path="res://lessons/lesson03_playable/path_overlay.gd" id="4_overlay"]
 [ext_resource type="PackedScene" path="res://lessons/lesson03_playable/enemy.tscn" id="5_enemy"]
+[ext_resource type="Texture2D" path="res://assets/sprites/heart_full.png" id="6_heart_full"]
+[ext_resource type="Texture2D" path="res://assets/sprites/heart_empty.png" id="7_heart_empty"]
 
 [node name="Main" type="Node2D" unique_id=53313134]
 script = ExtResource("1_main")
@@ -35,3 +37,25 @@ offset_right = 500.0
 offset_bottom = 76.0
 theme_override_font_sizes/font_size = 18
 text = "宝箱：0/0"
+
+[node name="HealthUI" type="HBoxContainer" parent="HUD" unique_id=2001002001]
+offset_left = 440.0
+offset_top = 12.0
+offset_right = 500.0
+offset_bottom = 44.0
+theme_override_constants/separation = 4
+
+[node name="Heart1" type="TextureRect" parent="HUD/HealthUI" unique_id=2001002002]
+offset_right = 16.0
+offset_bottom = 16.0
+texture = ExtResource("6_heart_full")
+
+[node name="Heart2" type="TextureRect" parent="HUD/HealthUI" unique_id=2001002003]
+offset_right = 16.0
+offset_bottom = 16.0
+texture = ExtResource("6_heart_full")
+
+[node name="Heart3" type="TextureRect" parent="HUD/HealthUI" unique_id=2001002004]
+offset_right = 16.0
+offset_bottom = 16.0
+texture = ExtResource("6_heart_full")
