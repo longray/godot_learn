@@ -29,7 +29,7 @@ const DIR_ROW := {"down": 0, "up": 1, "side": 2}
 # 步态循环：迈A → 站立 → 迈B → 站立（经典 RPG 四拍）
 const FRAME_SEQ := [0, 1, 2, 1]
 
-@export var walk_fps: float = 11.0
+@export var walk_fps: float = 8.0
 
 var _anim_t := 0.0
 
@@ -52,14 +52,10 @@ func _update_sprite_animation(input_vector: Vector2, delta: float) -> void:
 	if input_vector == Vector2.ZERO:
 		_anim_t = 0.0
 		sprite.frame = row * 3 + 1  # idle = 中间列
-		sprite.position.y = 0.0
 	else:
 		_anim_t += delta
 		var col: int = FRAME_SEQ[floori(_anim_t * walk_fps) % FRAME_SEQ.size()]
 		sprite.frame = row * 3 + col
-		# bob 起伏：迈步帧身体上移 1px，站立帧落下（影子是独立节点不跟着动）
-		# 上下方向尤其有效——身体颠簸让"前进感"立竿见影
-		sprite.position.y = -1.0 if col != 1 else 0.0
 
 
 func _physics_process(delta: float) -> void:
