@@ -14,7 +14,7 @@ radius = 6.4
 script = ExtResource("1_enemy")
 
 [node name="Shadow" type="Sprite2D" parent="."]
-position = Vector2(0, 4)
+position = Vector2(0, 1)
 texture = ExtResource("3_shadow")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
