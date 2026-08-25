@@ -38,6 +38,14 @@ offset_bottom = 76.0
 theme_override_font_sizes/font_size = 18
 text = "宝箱：0/0"
 
+[node name="GoldLabel" type="Label" parent="HUD" unique_id=2001002005]
+offset_left = 12.0
+offset_top = 76.0
+offset_right = 500.0
+offset_bottom = 108.0
+theme_override_font_sizes/font_size = 18
+text = "金币：0"
+
 [node name="HealthUI" type="HBoxContainer" parent="HUD" unique_id=2001002001]
 offset_left = 440.0
 offset_top = 12.0

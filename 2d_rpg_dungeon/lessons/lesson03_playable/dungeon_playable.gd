@@ -138,6 +138,7 @@ var dynamic_entities: Array[Node] = []
 # HUD 引用（场景里的 CanvasLayer > Label）
 @onready var key_label: Label = $HUD/KeyLabel
 @onready var treasure_label: Label = $HUD/TreasureLabel
+@onready var gold_label: Label = $HUD/GoldLabel
 @onready var health_ui: HBoxContainer = $HUD/HealthUI
 
 # 作业 1（第 5 课）：心形图标纹理
@@ -200,6 +201,7 @@ func generate() -> void:
 		path_overlay.set_path(astar_grid.get_id_path(entrance_cell, exit_cell), cell_size)
 
 	_update_hud()
+	_update_gold_hud()
 
 	if debug_print_path:
 		print("入口：", entrance_cell, "  出口：", exit_cell)
@@ -1130,6 +1132,7 @@ func _on_drop_body_entered(body: Node2D, area: Area2D, drop_type: String) -> voi
 	if drop_type == "gold":
 		gold_count += 1
 		print("捡到金币，当前金币：", gold_count)
+		_update_gold_hud()
 	elif drop_type == "potion":
 		if body.has_method("heal"):
 			body.heal(1)
@@ -1157,6 +1160,13 @@ func _update_hud(locked_hint: bool = false) -> void:
 		if treasure_label != null:
 			treasure_label.text = "宝箱：%d/%d" % [treasure_count, treasure_cells.size()]
 			treasure_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4))
+
+
+func _update_gold_hud() -> void:
+	# 作业 5（第 6 课）：金币计数（跨层保留，只在拾取时刷新）
+	if gold_label != null:
+		gold_label.text = "金币：%d" % gold_count
+		gold_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
 
 
 func update_health_ui(current: int, max_value: int) -> void:

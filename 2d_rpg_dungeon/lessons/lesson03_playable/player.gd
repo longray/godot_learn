@@ -29,8 +29,8 @@ extends CharacterBody2D
 @export var attack_radius: float = 12.0
 @export var attack_offset: float = 16.0
 
-# 默认 ui_accept（空格/回车）；作业 1 换自定义动作 "attack"
-const ATTACK_ACTION := "ui_accept"
+# 作业 1（第 6 课）：自定义攻击动作 attack（鼠标左键/空格/J，Input Map 配置）
+const ATTACK_ACTION := "attack"
 
 # 由 Main 场景注入
 var dungeon: Node
