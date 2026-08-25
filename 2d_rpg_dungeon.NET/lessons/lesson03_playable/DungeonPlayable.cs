@@ -5,7 +5,7 @@ namespace RpgDungeon;
 
 // =========================
 // 第 3 课：连通性验证、玩家出生点、简单移动、出口触发（C# 版）
-// 在第 2 课基础上新增：A* 可达性验证与自动修复、玩家、网格移动阻挡、出口 Area2D 触发
+// 第 4 课：钥匙、宝箱、怪物出生点、出口锁（POI 体系，含全部作业）
 // 与 GDScript 版算法逐行对应，同种子应产出相同地图（RNG 调用序列严格对齐）
 // =========================
 public partial class DungeonPlayable : Node2D
@@ -52,13 +52,34 @@ public partial class DungeonPlayable : Node2D
 	// 把你的 player.tscn 拖到这里
 	[Export] public PackedScene PlayerScene { get; set; }
 
+	// 作业 5：把 enemy.tscn 拖到这里（未设置时怪物回退为旧版危险区）
+	[Export] public PackedScene EnemyScene { get; set; }
+
 	[Export] public float ExitRadiusMultiplier { get; set; } = 0.45f;
 	[Export] public bool DebugPrintPath { get; set; } = false;
+
+	// ---------- POI 参数（第 4 课：钥匙、宝箱、怪物出生点） ----------
+
+	[ExportGroup("POI")]
+
+	[Export(PropertyHint.Range, "0,10")] public int MinTreasures { get; set; } = 2;
+	[Export(PropertyHint.Range, "0,10")] public int MaxTreasures { get; set; } = 5;
+
+	[Export(PropertyHint.Range, "0,12")] public int MinMonsters { get; set; } = 2;
+	[Export(PropertyHint.Range, "0,12")] public int MaxMonsters { get; set; } = 6;
 
 	// ---------- 数据 ----------
 
 	private const int CellWall = 0;
 	private const int CellFloor = 1;
+
+	private static readonly Vector2I InvalidCell = new(-1, -1);
+
+	// 作业 2：怪物出生点距入口的最小距离（平方距离，36 = 欧氏 6 格）
+	private const int MonsterMinDistanceSq = 36;
+
+	// 作业 3：POI 不可达时的重选上限（防极端情况死循环）
+	private const int PoiReachableRetries = 16;
 
 	private readonly RandomNumberGenerator _rng = new();
 
@@ -70,14 +91,23 @@ public partial class DungeonPlayable : Node2D
 	public Vector2I EntranceCell { get; private set; }
 	public Vector2I ExitCell { get; private set; }
 
+	public Vector2I KeyCell { get; private set; } = InvalidCell;
+	public readonly List<Vector2I> TreasureCells = new();
+	public readonly List<Vector2I> MonsterCells = new();
+
+	// 已被占用的格子，避免钥匙/宝箱/怪物重叠
+	private readonly HashSet<Vector2I> _usedCells = new();
+
+	// 当前地牢里生成的钥匙、宝箱、怪物节点（玩家和出口不在此列，仍复用）
+	private readonly List<Node> _dynamicEntities = new();
+
 	private AStarGrid2D _astarGrid = new();
 
 	private Player _playerInstance;
 	private Area2D _exitArea;
 
-	// 作业 4：钥匙门状态
-	private bool _hasKey;
-	private Area2D _keyArea;
+	public bool HasKey { get; private set; }
+	public int TreasureCount { get; private set; }
 
 	// ---------- 节点 ----------
 
@@ -88,6 +118,15 @@ public partial class DungeonPlayable : Node2D
 
 	// HUD 引用（场景里的 CanvasLayer > Label）
 	private Label _keyLabel;
+	private Label _treasureLabel;
+
+	// 像素素材（assets/sprites/generate_sprites.ps1 生成，16x16 透明背景）
+	private static readonly Texture2D KeyTexture =
+		GD.Load<Texture2D>("res://assets/sprites/key.png");
+	private static readonly Texture2D ChestTexture =
+		GD.Load<Texture2D>("res://assets/sprites/chest.png");
+	private static readonly Texture2D MonsterTexture =
+		GD.Load<Texture2D>("res://assets/sprites/monster.png");
 
 	// ---------- 互操作/测试访问器（int[,] 不能直接编组给 GDScript） ----------
 
@@ -109,7 +148,14 @@ public partial class DungeonPlayable : Node2D
 		}
 	}
 
-	public bool HasKey => _hasKey;
+	public int UsedCellCount => _usedCells.Count;
+
+	public int EntityCount => _dynamicEntities.Count;
+
+	// GDScript 互操作访问器（C# List 属性不自动编组，需方法暴露）
+	public int TreasureCellCount => TreasureCells.Count;
+
+	public int MonsterCellCount => MonsterCells.Count;
 
 	// ---------- 生命周期 ----------
 
@@ -118,6 +164,7 @@ public partial class DungeonPlayable : Node2D
 		_tileLayer = GetNode<TileMapLayer>("TileMapLayer");
 		_pathOverlay = GetNodeOrNull<PathOverlay>("PathOverlay");
 		_keyLabel = GetNodeOrNull<Label>("HUD/KeyLabel");
+		_treasureLabel = GetNodeOrNull<Label>("HUD/TreasureLabel");
 
 		if (_tileLayer == null)
 		{
@@ -142,7 +189,15 @@ public partial class DungeonPlayable : Node2D
 		MapWidth = Mathf.Max(20, MapWidth);
 		MapHeight = Mathf.Max(16, MapHeight);
 
+		// 第 4 课：每层重置玩家状态
+		HasKey = false;
+		TreasureCount = 0;
+
 		SetupRng();
+
+		// 第 4 课：清理上一层的钥匙、宝箱、怪物（玩家和出口仍复用）
+		ClearDynamicEntities();
+
 		ClearMapData();
 		PlaceRooms();
 		ConnectRooms();
@@ -150,10 +205,14 @@ public partial class DungeonPlayable : Node2D
 		PickEntranceAndExit();
 		EnsureExitReachable();
 
+		// 第 4 课：生成钥匙、宝箱、怪物位置
+		PickPoiCells();
+
 		SetupTilemap();
 		BuildTilemap();
 
 		UpdateOrSpawnExit();
+		SpawnPoiNodes();
 		UpdateOrSpawnPlayer();
 		SpawnMarkers();
 		CenterCamera();
@@ -161,14 +220,12 @@ public partial class DungeonPlayable : Node2D
 		// 作业 3：把最终的入口→出口路径交给覆盖层绘制（修复后的最新路径）
 		_pathOverlay?.SetPath(ToArray(_astarGrid.GetIdPath(EntranceCell, ExitCell)), CellSize);
 
-		// 作业 4：每层重新放钥匙 + 重置钥匙状态（放最后，避免影响既有 RNG 锚点）
-		_hasKey = false;
-		UpdateOrSpawnKey();
 		UpdateHud();
 
 		if (DebugPrintPath)
 		{
 			GD.Print("入口：", EntranceCell, "  出口：", ExitCell);
+			GD.Print("钥匙：", KeyCell, "  宝箱数：", TreasureCells.Count, "  怪物数：", MonsterCells.Count);
 		}
 	}
 
@@ -305,7 +362,7 @@ public partial class DungeonPlayable : Node2D
 			return;
 		}
 
-		// 第 1 课作业 5 成果：增量式最近邻连接（文档此处为旧版链式，按仓库现状保留本版）
+		// 第 1 课作业 5 成果：增量式最近邻连接
 		for (int i = 1; i < _rooms.Count; i++)
 		{
 			Vector2I from = RoomCenter(_rooms[i]);
@@ -402,13 +459,12 @@ public partial class DungeonPlayable : Node2D
 		if (_rooms.Count == 1)
 		{
 			// 只有一个房间时，在同一个房间里选一个不同的地板点作为出口
-			// （第 3 课文档改进：候选列表法，保证与入口不同）
+			// （候选列表法，保证与入口不同）
 			ExitCell = PickRandomFloorCellInRoom(_rooms[0], EntranceCell);
 		}
 		else
 		{
-			// 第 2 课作业 4 成果：出口 = 从入口出发「实际路径」最长的房间中心
-			// （文档此处为直线最远版，按仓库现状保留 A* 版；astar 已在 Generate 流程中先行构建）
+			// 出口 = 从入口出发「实际路径」最长的房间中心（A* 版）
 			ExitCell = EntranceCell;
 			int bestPathLen = -1;
 
@@ -571,7 +627,7 @@ public partial class DungeonPlayable : Node2D
 	{
 		if (UseExternalTiles)
 		{
-			// 第 2 课方案 B：尊重手工配置的 TileSet，脚本不碰 tile_set
+			// 方案 B：尊重手工配置的 TileSet，脚本不碰 tile_set
 			if (_tileLayer.TileSet == null)
 			{
 				GD.PushWarning("UseExternalTiles 开着，但 TileMapLayer 上没有手工 TileSet。");
@@ -599,7 +655,7 @@ public partial class DungeonPlayable : Node2D
 
 	private int CreatePlaceholderTileset()
 	{
-		// 第 2 课方案 A：优先加载外部图集，文件缺失则回退代码生成
+		// 方案 A：优先加载外部图集，文件缺失则回退代码生成
 		Texture2D texture;
 
 		if (ExternalTilesPath != "" && ResourceLoader.Exists(ExternalTilesPath))
@@ -718,166 +774,653 @@ public partial class DungeonPlayable : Node2D
 			_exitArea.AddChild(collision);
 			_exitArea.BodyEntered += OnExitBodyEntered;
 
+			// 作业 4：出口锁状态覆盖层（红=锁定 / 绿=解锁，UpdateExitLockVisual 刷新颜色）
+			var lockOverlay = new Polygon2D
+			{
+				Name = "LockOverlay",
+			};
+			float half = CellSize * 0.5f;
+			lockOverlay.Polygon = new Vector2[]
+			{
+				new(-half, -half),
+				new(half, -half),
+				new(half, half),
+				new(-half, half),
+			};
+			_exitArea.AddChild(lockOverlay);
+
 			_tileLayer.AddChild(_exitArea);
 		}
 		else
 		{
-			if (_exitArea.GetChild(0) is CollisionShape2D collision
-				&& collision.Shape is CircleShape2D circle)
+			if (_exitArea.GetChildOrNull<CollisionShape2D>(0) is { Shape: CircleShape2D circle })
 			{
 				circle.Radius = CellSize * ExitRadiusMultiplier;
 			}
 		}
 
 		_exitArea.Position = GetExitLocalPosition();
+		UpdateExitLockVisual();
+	}
+
+	private void UpdateExitLockVisual()
+	{
+		// 作业 4：出口覆盖层随钥匙状态变色（锁定=红半透明，解锁=绿半透明）
+		if (_exitArea == null || !GodotObject.IsInstanceValid(_exitArea))
+		{
+			return;
+		}
+
+		var overlay = _exitArea.GetNodeOrNull<Polygon2D>("LockOverlay");
+		if (overlay == null)
+		{
+			return;
+		}
+
+		overlay.Color = HasKey
+			? new Color(0.3f, 1.0f, 0.4f, 0.45f)
+			: new Color(1.0f, 0.25f, 0.25f, 0.45f);
 	}
 
 	private void OnExitBodyEntered(Node2D body)
 	{
-		if (body.IsInGroup("player"))
+		if (!body.IsInGroup("player"))
 		{
-			// 作业 4：门控——没钥匙进不了出口
-			if (!_hasKey)
-			{
-				GD.Print("出口被锁住了，需要钥匙！");
-				UpdateHud(true);
-				return;
-			}
+			return;
+		}
 
-			GD.Print("玩家到达出口，重新生成地牢。");
+		// 第 4 课：出口锁——必须先拿到钥匙
+		if (HasKey)
+		{
+			GD.Print("使用钥匙，进入下一层。");
 			// 物理回调中不能直接改场景树，延迟到帧末安全执行
 			CallDeferred(MethodName.Generate);
+		}
+		else
+		{
+			GD.Print("出口被锁住了，需要钥匙。");
+			UpdateHud(true);
 		}
 	}
 
 	// =========================
-	// 钥匙（作业 4）
+	// 第 4 课：POI 选点（钥匙、宝箱、怪物）
 	// =========================
 
-	private void UpdateOrSpawnKey()
+	private void PickPoiCells()
+	{
+		_usedCells.Clear();
+
+		KeyCell = InvalidCell;
+		TreasureCells.Clear();
+		MonsterCells.Clear();
+
+		// 入口和出口不能被内容点占用
+		MarkCellUsed(EntranceCell);
+		MarkCellUsed(ExitCell);
+
+		// 先选钥匙（最远房策略 + 作业 3 可达性验证）
+		KeyCell = PickReachableCell(PickKeyCell(), false);
+		if (KeyCell != InvalidCell)
+		{
+			MarkCellUsed(KeyCell);
+		}
+
+		// 再选宝箱（作业 3：带可达性验证的重选循环）
+		int minT = Mathf.Min(MinTreasures, MaxTreasures);
+		int maxT = Mathf.Max(MinTreasures, MaxTreasures);
+		int treasureAmount = _rng.RandiRange(minT, maxT);
+
+		for (int i = 0; i < treasureAmount; i++)
+		{
+			Vector2I cell = PickReachableCell(PickRandomAvailableCellInRooms(), false);
+			if (cell == InvalidCell)
+			{
+				break;
+			}
+
+			TreasureCells.Add(cell);
+			MarkCellUsed(cell);
+		}
+
+		// 最后选怪物（作业 2 距离过滤 + 作业 3 可达验证）
+		int minM = Mathf.Min(MinMonsters, MaxMonsters);
+		int maxM = Mathf.Max(MinMonsters, MaxMonsters);
+		int monsterAmount = _rng.RandiRange(minM, maxM);
+
+		for (int i = 0; i < monsterAmount; i++)
+		{
+			Vector2I cell = PickReachableCell(PickMonsterCell(), true);
+			if (cell == InvalidCell)
+			{
+				break;
+			}
+
+			MonsterCells.Add(cell);
+			MarkCellUsed(cell);
+		}
+	}
+
+	private void MarkCellUsed(Vector2I cell)
+	{
+		if (cell == InvalidCell)
+		{
+			return;
+		}
+
+		_usedCells.Add(cell);
+	}
+
+	private bool IsCellAvailable(Vector2I cell)
+	{
+		if (cell == InvalidCell)
+		{
+			return false;
+		}
+
+		if (cell.X < 0 || cell.X >= MapWidth)
+		{
+			return false;
+		}
+		if (cell.Y < 0 || cell.Y >= MapHeight)
+		{
+			return false;
+		}
+
+		if (_grid[cell.Y, cell.X] != CellFloor)
+		{
+			return false;
+		}
+
+		if (_usedCells.Contains(cell))
+		{
+			return false;
+		}
+
+		return true;
+	}
+
+	private Vector2I PickKeyCell()
+	{
+		// 第 4 课策略：排除入口房和出口房，选离入口最远的房间
+		// → 强制玩家探索
+		if (_rooms.Count == 0)
+		{
+			return InvalidCell;
+		}
+
+		List<Rect2I> candidateRooms = new();
+
+		// 优先排除入口房和出口房
+		foreach (Rect2I room in _rooms)
+		{
+			Vector2I center = RoomCenter(room);
+
+			if (center == EntranceCell)
+			{
+				continue;
+			}
+			if (center == ExitCell)
+			{
+				continue;
+			}
+
+			candidateRooms.Add(room);
+		}
+
+		if (candidateRooms.Count == 0)
+		{
+			candidateRooms.AddRange(_rooms);
+		}
+
+		// 在候选房间里选择离入口最远的房间
+		Rect2I bestRoom = candidateRooms[0];
+		int bestDistance = -1;
+
+		foreach (Rect2I room in candidateRooms)
+		{
+			Vector2I center = RoomCenter(room);
+			int distance = EntranceCell.DistanceSquaredTo(center);
+
+			if (distance > bestDistance)
+			{
+				bestDistance = distance;
+				bestRoom = room;
+			}
+		}
+
+		Vector2I cell = PickRandomAvailableCellInRoom(bestRoom);
+
+		if (cell != InvalidCell)
+		{
+			return cell;
+		}
+
+		// 如果这个房间没有合适位置，就全局找一个
+		return PickRandomAvailableCellInGrid();
+	}
+
+	private Vector2I PickReachableCell(Vector2I firstTry, bool isMonster)
+	{
+		// 作业 3：验证 firstTry 从入口可达；不可达则重选（重试有上限）
+		// 每次重选同样消耗一次 RNG —— 同种子序列稳定（重试次数由地图决定，可复现）
+		if (IsCellReachable(firstTry))
+		{
+			return firstTry;
+		}
+
+		for (int retry = 0; retry < PoiReachableRetries; retry++)
+		{
+			Vector2I candidate = isMonster
+				? PickMonsterCell()
+				: PickRandomAvailableCellInRooms();
+
+			if (candidate == InvalidCell)
+			{
+				break;
+			}
+
+			if (IsCellReachable(candidate))
+			{
+				return candidate;
+			}
+		}
+
+		// 重试用尽：接受原格（地图整体已连通，此分支理论上不触发，仅保底）
+		return firstTry;
+	}
+
+	private bool IsCellReachable(Vector2I cell)
+	{
+		// 作业 3：astar 已在 Generate 流程中先行构建，此处直接查询
+		if (cell == InvalidCell)
+		{
+			return false;
+		}
+
+		return _astarGrid.GetIdPath(EntranceCell, cell).Count > 0;
+	}
+
+	private Vector2I PickRandomAvailableCellInRoom(Rect2I room)
+	{
+		List<Vector2I> candidates = new();
+
+		for (int y = room.Position.Y; y < room.Position.Y + room.Size.Y; y++)
+		{
+			for (int x = room.Position.X; x < room.Position.X + room.Size.X; x++)
+			{
+				var cell = new Vector2I(x, y);
+
+				if (IsCellAvailable(cell))
+				{
+					candidates.Add(cell);
+				}
+			}
+		}
+
+		if (candidates.Count == 0)
+		{
+			return InvalidCell;
+		}
+
+		return candidates[_rng.RandiRange(0, candidates.Count - 1)];
+	}
+
+	private Vector2I PickRandomAvailableCellInRooms()
+	{
+		List<Vector2I> candidates = new();
+
+		foreach (Rect2I room in _rooms)
+		{
+			for (int y = room.Position.Y; y < room.Position.Y + room.Size.Y; y++)
+			{
+				for (int x = room.Position.X; x < room.Position.X + room.Size.X; x++)
+				{
+					var cell = new Vector2I(x, y);
+
+					if (IsCellAvailable(cell))
+					{
+						candidates.Add(cell);
+					}
+				}
+			}
+		}
+
+		if (candidates.Count == 0)
+		{
+			return PickRandomAvailableCellInGrid();
+		}
+
+		return candidates[_rng.RandiRange(0, candidates.Count - 1)];
+	}
+
+	private Vector2I PickMonsterCell()
+	{
+		// 作业 2：怪物出生点远离入口（避免玩家一出生就撞怪被传送）
+		List<Vector2I> candidates = new();
+
+		foreach (Rect2I room in _rooms)
+		{
+			for (int y = room.Position.Y; y < room.Position.Y + room.Size.Y; y++)
+			{
+				for (int x = room.Position.X; x < room.Position.X + room.Size.X; x++)
+				{
+					var cell = new Vector2I(x, y);
+
+					if (!IsCellAvailable(cell))
+					{
+						continue;
+					}
+
+					if (EntranceCell.DistanceSquaredTo(cell) <= MonsterMinDistanceSq)
+					{
+						continue;
+					}
+
+					candidates.Add(cell);
+				}
+			}
+		}
+
+		// 小地图/极端情况：达标格子耗尽时回退原逻辑，保证怪物仍能生成
+		if (candidates.Count == 0)
+		{
+			return PickRandomAvailableCellInRooms();
+		}
+
+		return candidates[_rng.RandiRange(0, candidates.Count - 1)];
+	}
+
+	private Vector2I PickRandomAvailableCellInGrid()
+	{
+		List<Vector2I> candidates = new();
+
+		for (int y = 0; y < MapHeight; y++)
+		{
+			for (int x = 0; x < MapWidth; x++)
+			{
+				var cell = new Vector2I(x, y);
+
+				if (IsCellAvailable(cell))
+				{
+					candidates.Add(cell);
+				}
+			}
+		}
+
+		if (candidates.Count == 0)
+		{
+			return InvalidCell;
+		}
+
+		return candidates[_rng.RandiRange(0, candidates.Count - 1)];
+	}
+
+	// =========================
+	// 第 4 课：POI 节点生成（Area2D + 像素素材）
+	// =========================
+
+	private void ClearDynamicEntities()
+	{
+		foreach (Node entity in _dynamicEntities)
+		{
+			if (GodotObject.IsInstanceValid(entity))
+			{
+				entity.QueueFree();
+			}
+		}
+
+		_dynamicEntities.Clear();
+	}
+
+	private void SpawnPoiNodes()
 	{
 		if (_tileLayer == null)
 		{
 			return;
 		}
 
-		// 删旧钥匙（RemoveChild 先解除树，防同帧匿名坑）
-		if (_keyArea != null && GodotObject.IsInstanceValid(_keyArea))
+		if (KeyCell != InvalidCell)
 		{
-			_tileLayer.RemoveChild(_keyArea);
-			_keyArea.QueueFree();
+			CreatePickupArea(
+				KeyCell,
+				"key",
+				KeyTexture,
+				0.35f
+			);
 		}
 
-		Vector2I keyCell = PickKeyCell();
-
-		_keyArea = new Area2D
+		foreach (Vector2I cell in TreasureCells)
 		{
-			Name = "KeyArea",
+			CreatePickupArea(
+				cell,
+				"treasure",
+				ChestTexture,
+				0.30f
+			);
+		}
+
+		foreach (Vector2I cell in MonsterCells)
+		{
+			SpawnEnemy(cell);
+		}
+	}
+
+	private void CreatePickupArea(
+		Vector2I cell,
+		string pickupType,
+		Texture2D texture,
+		float radiusMultiplier
+	) => CreatePoiAreaInternal(cell, texture, radiusMultiplier, pickupType);
+
+	private Area2D CreatePoiAreaInternal(
+		Vector2I cell,
+		Texture2D texture,
+		float radiusMultiplier,
+		string group
+	)
+	{
+		var area = new Area2D
+		{
+			Position = CellToCenterLocal(cell),
 			Monitoring = true,
 		};
 
 		var collision = new CollisionShape2D();
 		var circle = new CircleShape2D
 		{
-			Radius = CellSize * 0.45f,
+			Radius = CellSize * radiusMultiplier,
 		};
 		collision.Shape = circle;
-		_keyArea.AddChild(collision);
+		area.AddChild(collision);
 
-		// 金色菱形可视化（比玩家小一号）
-		var visual = new Polygon2D
+		// 像素素材可视化（Sprite2D 默认居中，16x16 原尺寸 = 满格）
+		var visual = new Sprite2D
 		{
-			Polygon = new Vector2[]
-			{
-				new(0, -6), new(5, 0), new(0, 6), new(-5, 0)
-			},
-			Color = new Color(1.0f, 0.8f, 0.0f),
+			Texture = texture,
 		};
-		_keyArea.AddChild(visual);
+		area.AddChild(visual);
 
-		_keyArea.BodyEntered += OnKeyBodyEntered;
+		area.AddToGroup(group);
+		area.BodyEntered += body =>
+		{
+			if (!body.IsInGroup("player"))
+			{
+				return;
+			}
 
-		_tileLayer.AddChild(_keyArea);
-		_keyArea.Position = CellToCenterLocal(keyCell);
+			switch (group)
+			{
+				case "key":
+					OnKeyBodyEntered(body, area);
+					break;
+				case "treasure":
+					OnTreasureBodyEntered(body, area);
+					break;
+			}
+		};
+
+		_tileLayer.AddChild(area);
+		_dynamicEntities.Add(area);
+
+		return area;
 	}
 
-	private Vector2I PickKeyCell()
+	private void SpawnEnemy(Vector2I cell)
 	{
-		// 钥匙优先放「既非入口也非出口」的房间 → 强制玩家绕支路探索
-		if (_rooms.Count == 0)
+		// 作业 5：实例化真正的敌人场景（CharacterBody2D + PlayerTouched 信号）
+		if (EnemyScene != null)
 		{
-			return EntranceCell;
-		}
-
-		// 找出口所在房间
-		int exitRoomIdx = -1;
-		for (int i = 0; i < _rooms.Count; i++)
-		{
-			if (RoomCenter(_rooms[i]) == ExitCell)
+			var enemy = EnemyScene.Instantiate<CharacterBody2D>();
+			if (enemy is Enemy e)
 			{
-				exitRoomIdx = i;
-				break;
+				e.Position = CellToCenterLocal(cell);
+				e.PlayerTouched += OnEnemyPlayerTouched;
+				_tileLayer.AddChild(e);
+				_dynamicEntities.Add(e);
+				return;
 			}
 		}
 
-		// 候选：非入口(0)、非出口的房间
-		List<int> candidates = new();
-		for (int i = 1; i < _rooms.Count; i++)
-		{
-			if (i != exitRoomIdx)
-			{
-				candidates.Add(i);
-			}
-		}
-
-		if (candidates.Count == 0)
-		{
-			// 只有入口+出口两个房间：钥匙放出口房间内（避开出口格）
-			if (exitRoomIdx >= 0)
-			{
-				return PickRandomFloorCellInRoom(_rooms[exitRoomIdx], ExitCell);
-			}
-			return PickRandomFloorCellInRoom(_rooms[0], EntranceCell);
-		}
-
-		int roomIdx = candidates[_rng.RandiRange(0, candidates.Count - 1)];
-		return RoomCenter(_rooms[roomIdx]);
+		// 回退：未配置敌人场景时用旧版危险区（保底不断更）
+		GD.PushWarning("EnemyScene 未设置，怪物回退为危险区。");
+		CreateHazardArea(cell);
 	}
 
-	private void OnKeyBodyEntered(Node2D body)
+	private void CreateHazardArea(Vector2I cell)
 	{
-		if (body.IsInGroup("player") && !_hasKey)
+		var area = new Area2D
 		{
-			_hasKey = true;
-			GD.Print("获得钥匙！出口已解锁。");
-			// 拾取后钥匙消失；monitoring 属物理状态，物理回调中必须 SetDeferred
-			_keyArea.SetDeferred(Area2D.PropertyName.Monitoring, false);
-			_keyArea.Visible = false;
-			UpdateHud();
+			Position = CellToCenterLocal(cell),
+			Monitoring = true,
+		};
+
+		var collision = new CollisionShape2D();
+		var circle = new CircleShape2D
+		{
+			Radius = CellSize * 0.40f,
+		};
+		collision.Shape = circle;
+		area.AddChild(collision);
+
+		var visual = new Sprite2D
+		{
+			Texture = MonsterTexture,
+		};
+		area.AddChild(visual);
+
+		area.AddToGroup("monster");
+		area.BodyEntered += (body) =>
+		{
+			if (body.IsInGroup("player"))
+			{
+				OnMonsterBodyEntered(body);
+			}
+		};
+
+		_tileLayer.AddChild(area);
+		_dynamicEntities.Add(area);
+	}
+
+	// =========================
+	// 第 4 课：POI 触发逻辑
+	// =========================
+
+	private void OnKeyBodyEntered(Node2D body, Area2D area)
+	{
+		HasKey = true;
+
+		GD.Print("拿到了钥匙！出口已解锁。");
+
+		UpdateHud();
+		UpdateExitLockVisual();
+		RemoveEntity(area);
+	}
+
+	private void OnTreasureBodyEntered(Node2D body, Area2D area)
+	{
+		TreasureCount++;
+
+		GD.Print("打开宝箱，当前宝箱数：", TreasureCount);
+
+		UpdateHud();
+		RemoveEntity(area);
+	}
+
+	private void OnMonsterBodyEntered(Node2D body)
+	{
+		GD.Print("碰到怪物！回到入口。");
+
+		// 本课规则：碰到怪物 → 传送回入口（后续课程升级为扣血/战斗）
+		if (GodotObject.IsInstanceValid(_playerInstance))
+		{
+			_playerInstance.GlobalPosition = GetEntranceWorldPosition();
 		}
 	}
+
+	private void OnEnemyPlayerTouched()
+	{
+		// 作业 5：敌人场景信号回调（行为与 OnMonsterBodyEntered 一致）
+		// 惩罚逻辑集中在此，下一课升级战斗系统时只改这一处
+		GD.Print("碰到怪物！回到入口。");
+
+		if (GodotObject.IsInstanceValid(_playerInstance))
+		{
+			_playerInstance.GlobalPosition = GetEntranceWorldPosition();
+		}
+	}
+
+	private void RemoveEntity(Node entity)
+	{
+		if (!GodotObject.IsInstanceValid(entity))
+		{
+			return;
+		}
+
+		_dynamicEntities.Remove(entity);
+
+		// 踩坑：monitoring 属物理状态，物理回调中必须 SetDeferred
+		if (entity is Area2D area)
+		{
+			area.SetDeferred(Area2D.PropertyName.Monitoring, false);
+		}
+
+		entity.QueueFree();
+	}
+
+	// =========================
+	// HUD
+	// =========================
 
 	private void UpdateHud(bool lockedHint = false)
 	{
+		// 作业 1：钥匙状态行
 		if (_keyLabel == null)
 		{
 			return;
 		}
 
-		if (_hasKey)
+		if (HasKey)
 		{
 			_keyLabel.Text = "钥匙：已获得 ✓ 出口已解锁";
 			_keyLabel.AddThemeColorOverride("font_color", new Color(0.5f, 1.0f, 0.6f));
 		}
 		else if (lockedHint)
 		{
-			_keyLabel.Text = "出口被锁住了！去寻找金色钥匙…";
+			_keyLabel.Text = "出口被锁住了！去寻找金钥匙…";
 			_keyLabel.AddThemeColorOverride("font_color", new Color(1.0f, 0.5f, 0.4f));
 		}
 		else
 		{
-			_keyLabel.Text = "钥匙：未获得（找金色菱形）";
+			_keyLabel.Text = "钥匙：未获得（找金钥匙）";
 			_keyLabel.AddThemeColorOverride("font_color", new Color(1.0f, 1.0f, 1.0f));
+		}
+
+		// 作业 1：宝箱计数行（已开 / 总数；宝箱拾取后不回收格子，总数稳定）
+		if (_treasureLabel != null)
+		{
+			_treasureLabel.Text = $"宝箱：{TreasureCount}/{TreasureCells.Count}";
+			_treasureLabel.AddThemeColorOverride("font_color", new Color(1.0f, 0.85f, 0.4f));
 		}
 	}
 
