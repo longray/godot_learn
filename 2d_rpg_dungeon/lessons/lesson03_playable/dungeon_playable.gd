@@ -101,6 +101,9 @@ const INVALID_CELL := Vector2i(-1, -1)
 # 作业 2：怪物出生点距入口的最小距离（平方距离，36 = 欧氏 6 格）
 const MONSTER_MIN_DISTANCE_SQ := 36
 
+# 作业 3：POI 不可达时的重选上限（每类 POI 独立计数，防极端情况死循环）
+const POI_REACHABLE_RETRIES := 16
+
 # 像素素材（assets/sprites/generate_sprites.ps1 生成，16x16 透明背景）
 const KEY_TEXTURE: Texture2D = preload("res://assets/sprites/key.png")
 const CHEST_TEXTURE: Texture2D = preload("res://assets/sprites/chest.png")
@@ -628,36 +631,69 @@ func _pick_poi_cells() -> void:
 	_mark_cell_used(entrance_cell)
 	_mark_cell_used(exit_cell)
 
-	# 先选钥匙（最远房策略，见 _pick_key_cell）
-	key_cell = _pick_key_cell()
+	# 先选钥匙（最远房策略 + 作业 3 可达性验证）
+	key_cell = _pick_reachable_cell(_pick_key_cell(), false)
 	if key_cell != INVALID_CELL:
 		_mark_cell_used(key_cell)
 
-	# 再选宝箱
+	# 再选宝箱（作业 3：带可达性验证的重选循环）
 	var min_t := mini(min_treasures, max_treasures)
 	var max_t := maxi(min_treasures, max_treasures)
 	var treasure_amount := rng.randi_range(min_t, max_t)
 
 	for i in treasure_amount:
-		var cell := _pick_random_available_cell_in_rooms()
+		var cell := _pick_reachable_cell(
+			_pick_random_available_cell_in_rooms(), false
+		)
 		if cell == INVALID_CELL:
 			break
 
 		treasure_cells.append(cell)
 		_mark_cell_used(cell)
 
-	# 最后选怪物
+	# 最后选怪物（作业 2 距离过滤 + 作业 3 可达验证）
 	var min_m := mini(min_monsters, max_monsters)
 	var max_m := maxi(min_monsters, max_monsters)
 	var monster_amount := rng.randi_range(min_m, max_m)
 
 	for i in monster_amount:
-		var cell := _pick_monster_cell()
+		var cell := _pick_reachable_cell(_pick_monster_cell(), true)
 		if cell == INVALID_CELL:
 			break
 
 		monster_cells.append(cell)
 		_mark_cell_used(cell)
+
+
+func _pick_reachable_cell(first_try: Vector2i, is_monster: bool) -> Vector2i:
+	# 作业 3：验证 first_try 从入口可达；不可达则重选（重试有上限）
+	# 每次重选同样消耗一次 RNG —— 同种子序列稳定（重试次数由地图决定，可复现）
+	if _is_cell_reachable(first_try):
+		return first_try
+
+	for retry in POI_REACHABLE_RETRIES:
+		var candidate: Vector2i
+		if is_monster:
+			candidate = _pick_monster_cell()
+		else:
+			candidate = _pick_random_available_cell_in_rooms()
+
+		if candidate == INVALID_CELL:
+			break
+
+		if _is_cell_reachable(candidate):
+			return candidate
+
+	# 重试用尽：接受原格（地图整体已连通，此分支理论上不触发，仅保底）
+	return first_try
+
+
+func _is_cell_reachable(cell: Vector2i) -> bool:
+	# 作业 3：astar_grid 在 generate() 流程中先行构建，此处直接查询
+	if cell == INVALID_CELL:
+		return false
+
+	return not astar_grid.get_id_path(entrance_cell, cell).is_empty()
 
 
 func _mark_cell_used(cell: Vector2i) -> void:
