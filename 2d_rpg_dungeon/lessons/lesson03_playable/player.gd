@@ -7,8 +7,14 @@ extends CharacterBody2D
 
 @export var speed: float = 140.0
 
+# 作业 5：移动阻挡方式开关（运行时对比手感用）
+# true  = 真实物理碰撞：穿墙由 TileSet 物理层的碰撞体阻止（move_and_slide 解算）
+# false = 数据驱动查询：is_world_position_walkable 采样判断（第 3 课主体方案）
+@export var use_physics_collision: bool = true
+
 # 碰撞采样半径刻意小于视觉半径（8px）：
 # 视觉饱满 + 碰撞宽松是经典手感设计，也避免 16px 走廊里大采样半径卡死
+# （仅数据驱动模式使用；物理模式下由 CollisionShape2D 的 CircleShape r=5 参与解算）
 @export var collision_radius: float = 5.0
 
 # 由 Main 场景注入
@@ -35,6 +41,14 @@ func _physics_process(delta: float) -> void:
 		return
 
 	var desired_velocity := input_vector.normalized() * speed
+
+	# 作业 5：物理碰撞模式——直接设速度，阻挡交给 TileSet 物理层 + move_and_slide
+	if use_physics_collision:
+		velocity = desired_velocity
+		move_and_slide()
+		return
+
+	# 数据驱动模式（第 3 课主体）：查询地图数据判断可走性
 	var next_position := global_position + desired_velocity * delta
 
 	# 如果目标位置可走，直接移动
