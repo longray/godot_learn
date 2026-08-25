@@ -5,6 +5,7 @@ extends Node2D
 # 第 4 课：钥匙、宝箱、怪物出生点、出口锁（POI 体系重构）
 # 在第 2 课基础上新增：A* 可达性验证与自动修复、玩家、网格移动阻挡、出口 Area2D 触发
 # 第 4 课新增：used_cells 占用管理、dynamic_entities 动态实体、宝箱计数、怪物危险区
+# 可视化：像素素材（assets/sprites/，generate_sprites.ps1 生成）替代色块
 # =========================
 
 # ---------- 基础生成参数 ----------
@@ -96,6 +97,11 @@ var exit_area: Area2D
 # =========================
 
 const INVALID_CELL := Vector2i(-1, -1)
+
+# 像素素材（assets/sprites/generate_sprites.ps1 生成，16x16 透明背景）
+const KEY_TEXTURE: Texture2D = preload("res://assets/sprites/key.png")
+const CHEST_TEXTURE: Texture2D = preload("res://assets/sprites/chest.png")
+const MONSTER_TEXTURE: Texture2D = preload("res://assets/sprites/monster.png")
 
 var has_key := false
 var treasure_count := 0
@@ -787,7 +793,7 @@ func _spawn_poi_nodes() -> void:
 		_create_pickup_area(
 			key_cell,
 			"key",
-			Color(1.0, 0.85, 0.2),
+			KEY_TEXTURE,
 			0.35
 		)
 
@@ -795,7 +801,7 @@ func _spawn_poi_nodes() -> void:
 		_create_pickup_area(
 			cell,
 			"treasure",
-			Color(0.9, 0.6, 0.2),
+			CHEST_TEXTURE,
 			0.30
 		)
 
@@ -806,10 +812,10 @@ func _spawn_poi_nodes() -> void:
 func _create_pickup_area(
 	cell: Vector2i,
 	pickup_type: String,
-	color: Color,
+	texture: Texture2D,
 	radius_multiplier: float
 ) -> Area2D:
-	var area := _create_poi_area(cell, color, radius_multiplier)
+	var area := _create_poi_area(cell, texture, radius_multiplier)
 
 	area.add_to_group(pickup_type)
 
@@ -824,7 +830,7 @@ func _create_pickup_area(
 func _create_hazard_area(cell: Vector2i) -> Area2D:
 	var area := _create_poi_area(
 		cell,
-		Color(0.8, 0.2, 0.8),
+		MONSTER_TEXTURE,
 		0.40
 	)
 
@@ -836,7 +842,7 @@ func _create_hazard_area(cell: Vector2i) -> Area2D:
 
 func _create_poi_area(
 	cell: Vector2i,
-	color: Color,
+	texture: Texture2D,
 	radius_multiplier: float
 ) -> Area2D:
 	var area := Area2D.new()
@@ -849,17 +855,9 @@ func _create_poi_area(
 	collision.shape = circle
 	area.add_child(collision)
 
-	var visual := Polygon2D.new()
-	var size := cell_size * radius_multiplier
-
-	visual.polygon = PackedVector2Array([
-		Vector2(-size, -size),
-		Vector2(size, -size),
-		Vector2(size, size),
-		Vector2(-size, size)
-	])
-
-	visual.color = color
+	# 像素素材可视化（Sprite2D 默认居中，16x16 原尺寸 = 满格）
+	var visual := Sprite2D.new()
+	visual.texture = texture
 	area.add_child(visual)
 
 	tile_layer.add_child(area)
@@ -930,7 +928,7 @@ func _update_hud(locked_hint: bool = false) -> void:
 		key_label.text = "出口被锁住了！去寻找金色钥匙…"
 		key_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.4))
 	else:
-		key_label.text = "钥匙：未获得（找黄色方块）"
+		key_label.text = "钥匙：未获得（找金钥匙）"
 		key_label.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0))
 
 
