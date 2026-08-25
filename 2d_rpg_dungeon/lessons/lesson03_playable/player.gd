@@ -29,7 +29,7 @@ const DIR_ROW := {"down": 0, "up": 1, "side": 2}
 # 步态循环：迈A → 站立 → 迈B → 站立（经典 RPG 四拍）
 const FRAME_SEQ := [0, 1, 2, 1]
 
-@export var walk_fps: float = 8.0
+@export var walk_fps: float = 11.0
 
 var _anim_t := 0.0
 

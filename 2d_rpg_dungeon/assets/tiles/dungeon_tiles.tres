@@ -1,10 +1,9 @@
-[gd_resource type="TileSet" load_steps=3 format=3 uid="uid://cu7s624kw70bb"]
+[gd_resource type="TileSet" format=3 uid="uid://cu7s624kw70bb"]
 
 [ext_resource type="Texture2D" uid="uid://b43gp8i8etgvw" path="res://assets/tiles/dungeon_tiles.png" id="1_tiles"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_tiles"]
 texture = ExtResource("1_tiles")
-texture_region_size = Vector2i(16, 16)
 0:0/0 = 0
 1:0/0 = 0
 1:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
@@ -12,6 +11,5 @@ texture_region_size = Vector2i(16, 16)
 3:0/0 = 0
 
 [resource]
-tile_size = Vector2i(16, 16)
 physics_layer_0/collision_layer = 1
 sources/0 = SubResource("TileSetAtlasSource_tiles")

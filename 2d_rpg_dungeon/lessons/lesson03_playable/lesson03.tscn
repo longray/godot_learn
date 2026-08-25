@@ -1,28 +1,26 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://cdk3wau04wocm"]
 
-
-[ext_resource type="Script" path="res://lessons/lesson03_playable/dungeon_playable.gd" id="1_main"]
-[ext_resource type="TileSet" path="res://assets/tiles/dungeon_tiles.tres" id="2_tiles"]
+[ext_resource type="Script" uid="uid://bttsnjhyf20ym" path="res://lessons/lesson03_playable/dungeon_playable.gd" id="1_main"]
+[ext_resource type="TileSet" uid="uid://cu7s624kw70bb" path="res://assets/tiles/dungeon_tiles.tres" id="2_tiles"]
 [ext_resource type="PackedScene" path="res://lessons/lesson03_playable/player.tscn" id="3_player"]
-[ext_resource type="Script" path="res://lessons/lesson03_playable/path_overlay.gd" id="4_overlay"]
+[ext_resource type="Script" uid="uid://d1wowjicq0rdx" path="res://lessons/lesson03_playable/path_overlay.gd" id="4_overlay"]
 [ext_resource type="PackedScene" path="res://lessons/lesson03_playable/enemy.tscn" id="5_enemy"]
 
-[node name="Main" type="Node2D"]
+[node name="Main" type="Node2D" unique_id=53313134]
 script = ExtResource("1_main")
 use_external_tiles = true
-tile_source_id = 0
 player_scene = ExtResource("3_player")
 enemy_scene = ExtResource("5_enemy")
 
-[node name="TileMapLayer" type="TileMapLayer" parent="."]
+[node name="TileMapLayer" type="TileMapLayer" parent="." unique_id=484129728]
 tile_set = ExtResource("2_tiles")
 
-[node name="PathOverlay" type="Node2D" parent="."]
+[node name="PathOverlay" type="Node2D" parent="." unique_id=984029640]
 script = ExtResource("4_overlay")
 
-[node name="HUD" type="CanvasLayer" parent="."]
+[node name="HUD" type="CanvasLayer" parent="." unique_id=1153160218]
 
-[node name="KeyLabel" type="Label" parent="HUD"]
+[node name="KeyLabel" type="Label" parent="HUD" unique_id=1746704671]
 offset_left = 12.0
 offset_top = 12.0
 offset_right = 500.0
@@ -30,7 +28,7 @@ offset_bottom = 44.0
 theme_override_font_sizes/font_size = 18
 text = "钥匙：未获得"
 
-[node name="TreasureLabel" type="Label" parent="HUD"]
+[node name="TreasureLabel" type="Label" parent="HUD" unique_id=1507903963]
 offset_left = 12.0
 offset_top = 44.0
 offset_right = 500.0
