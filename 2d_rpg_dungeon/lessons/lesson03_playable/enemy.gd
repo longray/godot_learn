@@ -20,6 +20,9 @@ extends CharacterBody2D
 @export var chase_radius: float = 80.0
 @export var chase_speed_multiplier: float = 1.4
 
+# 接触伤害判定半径（≈ Hitbox 6.4 + 玩家碰撞体 5）
+@export var contact_range: float = 11.0
+
 var chase_speed: float = 0.0
 
 var dungeon: Node
@@ -44,8 +47,7 @@ var _look_dir := 1.0
 
 
 func _ready() -> void:
-	if hitbox:
-		hitbox.body_entered.connect(_on_hitbox_body_entered)
+	pass  # 接触伤害改为 _physics_process 每帧距离检测；Hitbox 保留供未来攻击判定
 
 
 func _process(delta: float) -> void:
@@ -135,6 +137,13 @@ func _physics_process(delta: float) -> void:
 	# 作业 3：追击判定（滞回：进入 80px，脱离 100px——防止边缘反复横跳）
 	var player_ref := _get_player_ref()
 	if is_instance_valid(player_ref):
+		# 接触伤害：每帧距离检测（踩坑：body_entered 只在进入瞬间触发一次，
+		# 玩家站不动持续重叠时永不重发 → 无敌结束后不再扣血。
+		# take_damage 自带无敌检查，每帧调用在无敌期零伤害，结束后立即补刀）
+		if global_position.distance_to(player_ref.global_position) < contact_range:
+			if player_ref.has_method("take_damage"):
+				player_ref.take_damage(contact_damage, global_position)
+
 		var dist := global_position.distance_to(player_ref.global_position)
 
 		if not is_chasing and dist < chase_radius:
@@ -206,8 +215,3 @@ func _move_with_wall_check(desired_velocity: Vector2, delta: float) -> void:
 		velocity = Vector2(0.0, desired_velocity.y)
 	else:
 		velocity = Vector2.ZERO
-
-
-func _on_hitbox_body_entered(body: Node2D) -> void:
-	if body.is_in_group("player") and body.has_method("take_damage"):
-		body.take_damage(contact_damage, global_position)
