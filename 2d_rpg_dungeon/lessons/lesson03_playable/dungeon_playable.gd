@@ -98,6 +98,9 @@ var exit_area: Area2D
 
 const INVALID_CELL := Vector2i(-1, -1)
 
+# 作业 2：怪物出生点距入口的最小距离（平方距离，36 = 欧氏 6 格）
+const MONSTER_MIN_DISTANCE_SQ := 36
+
 # 像素素材（assets/sprites/generate_sprites.ps1 生成，16x16 透明背景）
 const KEY_TEXTURE: Texture2D = preload("res://assets/sprites/key.png")
 const CHEST_TEXTURE: Texture2D = preload("res://assets/sprites/chest.png")
@@ -649,7 +652,7 @@ func _pick_poi_cells() -> void:
 	var monster_amount := rng.randi_range(min_m, max_m)
 
 	for i in monster_amount:
-		var cell := _pick_random_available_cell_in_rooms()
+		var cell := _pick_monster_cell()
 		if cell == INVALID_CELL:
 			break
 
@@ -754,6 +757,31 @@ func _pick_random_available_cell_in_rooms() -> Vector2i:
 
 	if candidates.is_empty():
 		return _pick_random_available_cell_in_grid()
+
+	return candidates[rng.randi_range(0, candidates.size() - 1)]
+
+
+func _pick_monster_cell() -> Vector2i:
+	# 作业 2：怪物出生点远离入口（避免玩家一出生就撞怪被传送）
+	# 候选 = 房间内可用 + 距入口平方距离 > MONSTER_MIN_DISTANCE_SQ
+	var candidates: Array[Vector2i] = []
+
+	for room in rooms:
+		for y in range(room.position.y, room.position.y + room.size.y):
+			for x in range(room.position.x, room.position.x + room.size.x):
+				var cell := Vector2i(x, y)
+
+				if not _is_cell_available(cell):
+					continue
+
+				if entrance_cell.distance_squared_to(cell) <= MONSTER_MIN_DISTANCE_SQ:
+					continue
+
+				candidates.append(cell)
+
+	# 小地图/极端情况：达标格子耗尽时回退原逻辑，保证怪物仍能生成
+	if candidates.is_empty():
+		return _pick_random_available_cell_in_rooms()
 
 	return candidates[rng.randi_range(0, candidates.size() - 1)]
 
