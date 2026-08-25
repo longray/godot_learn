@@ -50,6 +50,9 @@ extends Node2D
 # 把你的 player.tscn 拖到这里
 @export var player_scene: PackedScene
 
+# 作业 5：把 enemy.tscn 拖到这里（未设置时怪物回退为旧版危险区）
+@export var enemy_scene: PackedScene
+
 @export var exit_radius_multiplier: float = 0.45
 @export var debug_print_path: bool = false
 
@@ -899,7 +902,7 @@ func _spawn_poi_nodes() -> void:
 		)
 
 	for cell in monster_cells:
-		_create_hazard_area(cell)
+		_spawn_enemy(cell)
 
 
 func _create_pickup_area(
@@ -918,6 +921,22 @@ func _create_pickup_area(
 		area.body_entered.connect(_on_treasure_body_entered.bind(area))
 
 	return area
+
+
+func _spawn_enemy(cell: Vector2i) -> void:
+	# 作业 5：实例化真正的敌人场景（CharacterBody2D + player_touched 信号）
+	if enemy_scene != null:
+		var enemy := enemy_scene.instantiate() as CharacterBody2D
+		if enemy:
+			enemy.position = _cell_to_center_local(cell)
+			enemy.player_touched.connect(_on_enemy_player_touched)
+			tile_layer.add_child(enemy)
+			dynamic_entities.append(enemy)
+			return
+
+	# 回退：未配置敌人场景时用旧版危险区（保底不断更）
+	push_warning("enemy_scene 未设置，怪物回退为危险区。")
+	_create_hazard_area(cell)
 
 
 func _create_hazard_area(cell: Vector2i) -> Area2D:
@@ -995,6 +1014,15 @@ func _on_monster_body_entered(body: Node2D, area: Area2D) -> void:
 	print("碰到怪物！回到入口。")
 
 	# 本课规则：碰到怪物 → 传送回入口（后续课程升级为扣血/战斗）
+	if is_instance_valid(player_instance):
+		player_instance.global_position = get_entrance_world_position()
+
+
+func _on_enemy_player_touched() -> void:
+	# 作业 5：敌人场景信号回调（行为与 _on_monster_body_entered 一致）
+	# 惩罚逻辑集中在此，下一课升级战斗系统时只改这一处
+	print("碰到怪物！回到入口。")
+
 	if is_instance_valid(player_instance):
 		player_instance.global_position = get_entrance_world_position()
 

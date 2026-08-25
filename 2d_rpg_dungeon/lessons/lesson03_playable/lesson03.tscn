@@ -1,16 +1,18 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 
 [ext_resource type="Script" path="res://lessons/lesson03_playable/dungeon_playable.gd" id="1_main"]
 [ext_resource type="TileSet" path="res://assets/tiles/dungeon_tiles.tres" id="2_tiles"]
 [ext_resource type="PackedScene" path="res://lessons/lesson03_playable/player.tscn" id="3_player"]
 [ext_resource type="Script" path="res://lessons/lesson03_playable/path_overlay.gd" id="4_overlay"]
+[ext_resource type="PackedScene" path="res://lessons/lesson03_playable/enemy.tscn" id="5_enemy"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
 use_external_tiles = true
 tile_source_id = 0
 player_scene = ExtResource("3_player")
+enemy_scene = ExtResource("5_enemy")
 
 [node name="TileMapLayer" type="TileMapLayer" parent="."]
 tile_set = ExtResource("2_tiles")
