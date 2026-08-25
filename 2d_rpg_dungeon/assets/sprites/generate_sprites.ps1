@@ -62,8 +62,9 @@ $playerMap = New-ColorMap `
 	@("p", @(60, 70, 90)) @("P", @(45, 54, 70)) `
 	@("b", @(110, 75, 45)) @("B", @(85, 58, 35))
 
-# ---- 躯干（y0-y12，13 行；v3 瘦身：头 8 宽、躯干 9-10 宽）----
-$torsoDown = @(
+# ---- 躯干（v4：头肩段 y0-y9 + 手臂三态段 y10-y12 分离，上下行手臂随步态摆动）----
+# 对侧协调：迈左脚=左手后摆（消失）右手前摆（保留），镜像同理
+$torsoDownHead = @(
 	"................",
 	".....hhhhhh.....",
 	"....hhhhhhhh....",
@@ -73,12 +74,24 @@ $torsoDown = @(
 	"....hffffffh....",
 	".....fffffF.....",
 	"....tttttttt....",
-	"....tTtttttd....",
+	"....tTtttttd...."
+)
+$torsoDownArmA = @(             # 迈左脚：左手后摆（消失），右手保留
+	"....ttttttttf...",
+	"....tttGGttf....",
+	"....tttttttt...."
+)
+$torsoDownArmIdle = @(
 	"...ftttttttf....",
 	"...ftttGGttf....",
 	"....tttttttt...."
 )
-$torsoUp = @(
+$torsoDownArmB = @(             # 迈右脚：右手后摆（消失），左手保留
+	"...ftttttttt....",
+	"...ftttGGtt.....",
+	"....tttttttt...."
+)
+$torsoUpHead = @(
 	"................",
 	".....hhhhhh.....",
 	"....hhhhhhhh....",
@@ -88,9 +101,21 @@ $torsoUp = @(
 	"....hhhhhhhh....",
 	".....hhhhhh.....",
 	"....tttttttt....",
-	"....tTtttttd....",
+	"....tTtttttd...."
+)
+$torsoUpArmA = @(               # 迈左脚：左手后摆，右手保留
+	"....ttttttttf...",
+	"....ttttttttf...",
+	"....tttttttt...."
+)
+$torsoUpArmIdle = @(
 	"...ftttttttf....",
 	"...ftttttttf....",
+	"....tttttttt...."
+)
+$torsoUpArmB = @(               # 迈右脚：右手后摆，左手保留
+	"...ftttttttt....",
+	"...ftttttttt....",
 	"....tttttttt...."
 )
 # 侧面（朝右）：y10 手臂行分三态（前摆/垂/后摆），其余共用
@@ -157,11 +182,15 @@ $sideLegsB = @(
 # ---- 拼 12 帧 ----
 $sheet = New-Object System.Drawing.Bitmap ($tile * 3), ($tile * 4)
 $frames = @(
-	@(($torsoDown + $legsA), ($torsoDown + $legsIdle), ($torsoDown + $legsB)),      # 行0 = 下
-	@(($torsoUp + $legsA), ($torsoUp + $legsIdle), ($torsoUp + $legsB)),            # 行1 = 上
+	@(($torsoDownHead + $torsoDownArmA + $legsA), `
+		($torsoDownHead + $torsoDownArmIdle + $legsIdle), `
+		($torsoDownHead + $torsoDownArmB + $legsB)),                      # 行0 = 下
+	@(($torsoUpHead + $torsoUpArmA + $legsA), `
+		($torsoUpHead + $torsoUpArmIdle + $legsIdle), `
+		($torsoUpHead + $torsoUpArmB + $legsB)),                          # 行1 = 上
 	@(($torsoSideHead + $torsoSideArmFwd + $sideLegsA), `
 		($torsoSideHead + $torsoSideArmIdle + $sideLegsIdle), `
-		($torsoSideHead + $torsoSideArmBack + $sideLegsB))                          # 行2 = 侧面
+		($torsoSideHead + $torsoSideArmBack + $sideLegsB))                # 行2 = 侧面
 )
 for ($row = 0; $row -lt 3; $row++) {
 	for ($col = 0; $col -lt 3; $col++) {
