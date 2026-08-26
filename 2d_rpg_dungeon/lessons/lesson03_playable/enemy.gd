@@ -83,11 +83,14 @@ var player: Node2D = null
 var last_known_player_position := Vector2.ZERO
 var time_since_seen: float = 0.0
 
-# 卡住检测（第 7 课修复版）：进展检测而非速度检测——
-# 踩坑：贴墙滑动时 velocity ≠ 0 但无位移，原 velocity==0 判定永不触发
-#       → 怪在不可达目标（贴墙的最后所见位置）旁无限蹭墙
+# 卡住检测（第 7 课修复版）：双通道——
+# 踩坑 1：贴墙滑动 velocity≠0 但无位移（velocity==0 判定失效）
+# 踩坑 2：贴墙"蠕动"（每 0.8s 挪 2.1px）恰好清零 2px 进展判定 → 永不卡死
+# 方案：停滞累积 + 每 1s 净位移健康检查（<6px/秒 = 卡死，理论应 ~speed px/秒）
 var stuck_time: float = 0.0
 var _last_progress_pos := Vector2.ZERO
+var _progress_check_t: float = 0.0
+var _progress_check_pos := Vector2.ZERO
 
 var home_position := Vector2.ZERO
 
@@ -203,6 +206,8 @@ func setup(dungeon_reference: Node, points: Array) -> void:
 	time_since_seen = 0.0
 	stuck_time = 0.0
 	_last_progress_pos = global_position
+	_progress_check_t = 0.0
+	_progress_check_pos = global_position
 
 	if patrol_points.is_empty():
 		home_position = global_position
@@ -465,7 +470,8 @@ func _process_chase(delta: float) -> void:
 
 
 # =========================
-# 返回（第 7 课：先去最后所见位置搜索 → 再回最近巡逻点）
+# 返回（第 7 课修复：AStar 寻路回家——直线回程隔墙必卡；
+# 先赴最后所见位置搜索 → 再回最近巡逻点，全程沿路径绕行）
 # =========================
 
 func _process_return(delta: float) -> void:
@@ -481,7 +487,20 @@ func _process_return(delta: float) -> void:
 		var target_index := _get_closest_patrol_point_index()
 		target = patrol_points[target_index] if not patrol_points.is_empty() else home_position
 
-	var arrived := _move_towards(target, speed, delta)
+	# AStar 路径重算（0.3s 节流；阶段切换时目标变了自然重算）
+	_repath_timer -= delta
+	if _repath_timer <= 0.0:
+		_repath_to(target)
+
+	var move_target := target
+	if not _path_world.is_empty():
+		move_target = _path_world[0]
+
+		if global_position.distance_to(move_target) <= arrival_distance:
+			_path_world.pop_front()
+			move_target = _path_world[0] if not _path_world.is_empty() else target
+
+	var arrived := _move_towards(move_target, speed, delta)
 	_update_stuck(delta)
 
 	if arrived:
@@ -494,23 +513,37 @@ func _process_return(delta: float) -> void:
 			is_waiting = false
 			stuck_time = 0.0
 	elif stuck_time > 0.8:
-		# 无进展超 0.8s（含贴墙滑到不可达点）：强制回巡逻
+		# 终极保底：AStar 仍卡死（极罕见）→ 瞬移回巡逻点，永不永久卡死
+		var idx := _get_closest_patrol_point_index()
+		global_position = patrol_points[idx] if not patrol_points.is_empty() else home_position
 		state = EnemyState.PATROL
+		current_point_index = idx
+		is_waiting = false
 		stuck_time = 0.0
 
 	move_and_slide()
 
 
 # =========================
-# 卡住检测：0.8s 内位移不足 2px = 无进展（含顶墙滑/完全静止两种形态）
+# 卡住检测：停滞累积 + 每秒净位移健康检查（顶墙滑/蠕动/静止全覆盖）
 # =========================
 
 func _update_stuck(delta: float) -> void:
+	# 通道 1：即时停滞（<2px 累积计时）
 	if global_position.distance_to(_last_progress_pos) < 2.0:
 		stuck_time += delta
 	else:
-		stuck_time = 0.0
 		_last_progress_pos = global_position
+
+	# 通道 2：每 1s 净位移检查——蠕动（有微位移但无净进展）也会被识别
+	_progress_check_t += delta
+	if _progress_check_t >= 1.0:
+		if global_position.distance_to(_progress_check_pos) >= 6.0:
+			stuck_time = 0.0  # 每秒有净进展 → 健康
+		else:
+			stuck_time += 1.0  # 蠕动 → 直接顶过阈值
+		_progress_check_t = 0.0
+		_progress_check_pos = global_position
 
 
 func _get_closest_patrol_point_index() -> int:
