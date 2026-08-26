@@ -174,6 +174,11 @@ public partial class DungeonPlayable : Node2D
 	// GDScript 互操作访问器（私有 List 不编组；验证/调试用）
 	public Node GetEntity(int index) => _dynamicEntities[index];
 
+	// 第 7 课：敌人 AI 所需的地图访问器（视线采样/AStar 寻路/格子换算）
+	public TileMapLayer TileLayer => _tileLayer;
+
+	public AStarGrid2D AstarGrid => _astarGrid;
+
 	// GDScript 互操作访问器（C# List 属性不自动编组，需方法暴露）
 	public int TreasureCellCount => TreasureCells.Count;
 
