@@ -69,6 +69,10 @@ text = "层数：第 1 层"
 theme_override_font_sizes/font_size = 18
 text = "宝箱：0/0"
 
+[node name="ExploreLabel" type="Label" parent="VBoxContainer"]
+theme_override_font_sizes/font_size = 18
+text = "探索：0 / 0"
+
 [node name="HurtOverlay" type="ColorRect" parent="."]
 anchors_preset = 15
 anchor_right = 1.0

@@ -11,6 +11,7 @@ extends CanvasLayer
 @onready var key_label: Label = $VBoxContainer/KeyRow/KeyLabel
 @onready var floor_label: Label = $VBoxContainer/FloorLabel
 @onready var treasure_label: Label = $VBoxContainer/TreasureLabel
+@onready var explore_label: Label = $VBoxContainer/ExploreLabel
 
 # 作业 2/3（第 8 课）：钥匙/金币图标（TextureRect 显示像素素材，替代纯文字前缀）
 @onready var key_icon: TextureRect = $VBoxContainer/KeyRow/KeyIcon
@@ -80,6 +81,12 @@ func update_treasure(opened: int, total: int) -> void:
 	# 第 5 课格式迁移：已开 / 总数（宝箱拾取后不回收格子，总数稳定）
 	treasure_label.text = "宝箱：%d/%d" % [opened, total]
 	treasure_label.add_theme_color_override("font_color", Color(1.0, 0.67, 0.43))
+
+
+func update_explore(explored: int, total: int) -> void:
+	# 作业 5（第 9 课）：探索进度（走进过的房间数 / 总房间数）
+	explore_label.text = "探索：%d / %d" % [explored, total]
+	explore_label.add_theme_color_override("font_color", Color(0.65, 0.85, 1.0))
 
 
 func _sync_heart_count(count: int) -> void:

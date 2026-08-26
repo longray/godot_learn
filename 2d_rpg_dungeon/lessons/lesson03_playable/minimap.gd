@@ -29,6 +29,9 @@ var exit_cell := Vector2i(-1, -1)
 var has_key: bool = false
 var key_cell := Vector2i(-1, -1)
 
+# 作业 1（第 9 课）：出口所在房间索引（-1 = 不在任何房间；探索过才显示红点）
+var exit_room_index: int = -1
+
 
 func _ready() -> void:
 	# UI 不应该挡住鼠标输入（攻击点击会落在小地图区域上）
@@ -66,7 +69,8 @@ func update_state(
 	entrance: Vector2i,
 	exit: Vector2i,
 	key_owned: bool,
-	key_pos: Vector2i
+	key_pos: Vector2i,
+	exit_room_idx: int = -1
 ) -> void:
 	# Main 每次房间变化/钥匙拾取时推送最新状态
 	explored_rooms = explored
@@ -75,6 +79,7 @@ func update_state(
 	exit_cell = exit
 	has_key = key_owned
 	key_cell = key_pos
+	exit_room_index = exit_room_idx
 
 	queue_redraw()
 
@@ -156,8 +161,8 @@ func _draw() -> void:
 			Color(0.2, 0.9, 0.4)
 		)
 
-	# 出口（红点）
-	if exit_cell != Vector2i(-1, -1):
+	# 出口（红点；作业 1：探索过出口房间才显示——迷雾一致性）
+	if exit_cell != Vector2i(-1, -1) and explored_rooms.has(exit_room_index):
 		draw_circle(
 			_cell_to_minimap_position(exit_cell, scale),
 			3.0,

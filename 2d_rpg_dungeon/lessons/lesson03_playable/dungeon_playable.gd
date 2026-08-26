@@ -1291,8 +1291,14 @@ func _update_minimap() -> void:
 			entrance_cell,
 			exit_cell,
 			has_key,
-			key_cell
+			key_cell,
+			# 作业 1（第 9 课）：出口所在房间索引（探索过才画红点）
+			_find_room_index_containing_cell(exit_cell)
 		)
+
+	# 作业 5（第 9 课）：探索进度行（探索变化时同步刷新）
+	if hud and hud.has_method("update_explore"):
+		hud.update_explore(explored_rooms.size(), rooms.size())
 
 
 func _update_player_room() -> void:
