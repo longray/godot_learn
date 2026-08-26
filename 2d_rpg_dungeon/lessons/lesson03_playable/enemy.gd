@@ -50,6 +50,10 @@ const TYPE_COLOR := {
 @export var detection_range: float = 90.0
 @export var lose_range: float = 150.0
 @export var lose_sight_time: float = 0.8
+
+# 作业 2（第 7 课）：视野半角（度）——仅"发现"需要面向玩家；
+# CHASE 中的保持判定不加角度（防绕背瞬间丢失→状态抖动）
+@export var detection_half_angle: float = 75.0
 # 倍率 1.15：fast 126 / normal 80 / tank 52——全员低于玩家 140，风筝普适
 @export var chase_speed_multiplier: float = 1.15
 
@@ -88,6 +92,9 @@ var _last_progress_pos := Vector2.ZERO
 var home_position := Vector2.ZERO
 
 var chase_speed: float = 0.0
+
+# 作业 2：朝向（随移动更新；发现判定用）
+var facing := Vector2.RIGHT
 
 # 呼吸动画计时
 var _t := 0.0
@@ -313,7 +320,10 @@ func _update_state(delta: float, player_ref: Node2D) -> void:
 				stuck_time = 0.0
 				return
 
-			if _is_player_visible(player_ref, lose_range):
+			# 作业 2：CHASE 保持判定用全向视线（无角度）——玩家绕背不瞬间丢失
+			if player_ref != null and is_instance_valid(player_ref) \
+					and global_position.distance_to(player_ref.global_position) <= lose_range \
+					and _has_line_of_sight(player_ref):
 				last_known_player_position = player_ref.global_position
 				time_since_seen = 0.0
 			else:
@@ -483,6 +493,7 @@ func _move_towards(target: Vector2, move_speed: float, delta: float) -> bool:
 		return true
 
 	var desired_velocity := direction.normalized() * move_speed
+	facing = direction.normalized()  # 作业 2：朝向随移动更新
 	var next_position := global_position + desired_velocity * delta
 
 	if dungeon.is_world_position_walkable(next_position, collision_radius):
@@ -518,7 +529,18 @@ func _is_player_visible(target: Node2D, range_limit: float) -> bool:
 	if distance > range_limit:
 		return false
 
-	# 沿敌人与玩家之间每 8px 采样，任一点是墙 → 视线被挡
+	# 作业 2：发现判定加视野半角——只有面向玩家 ±75° 才"发现"
+	# （由 _update_state 的调用方决定是否做角度检查；CHASE 保持用全向版）
+	var to_player := (target.global_position - global_position).normalized()
+	if absf(rad_to_deg(facing.angle_to(to_player))) > detection_half_angle:
+		return false
+
+	return _has_line_of_sight(target)
+
+
+func _has_line_of_sight(target: Node2D) -> bool:
+	# 纯视线采样（无角度/距离检查）——CHASE 保持判定复用
+	var distance := global_position.distance_to(target.global_position)
 	var steps := int(distance / 8.0) + 1
 
 	for i in range(steps + 1):
