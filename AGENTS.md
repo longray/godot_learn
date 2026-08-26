@@ -78,5 +78,14 @@ $p = "D:\AboutGame\learn\2d_rpg_dungeon"
 
 ## 课程语境
 
-第 1 课（`lessons/lesson01_small_dungeon/`）已完成（GDScript + C# 双版本）：随机房间 + L 走廊 + 最近邻连接（作业 5）+ 固定种子 + `_draw()` 可视化。种子复现性 = RNG 状态机原理（同种子 + 同调用顺序 = 同地图，跨语言亦然）。后续课程见 `doc/lession/`。
+第 1~6 课已完成（GDScript + C# 双版本，`lessons/lesson03_playable/` 为第 3 课起的主战场）：
+
+- 第 1 课：随机房间 + L 走廊 + 最近邻连接 + 固定种子（种子复现性 = 同种子 + 同 RNG 调用序列 = 同地图，跨语言逐格实测一致）
+- 第 2 课：TileMapLayer + placeholder/外部 TileSet
+- 第 3 课：A* 连通性 + 玩家移动（物理/数据双模式）+ 出口触发
+- 第 4 课：POI 体系（used_cells 占用 + dynamic_entities + 钥匙/宝箱/出口锁）
+- 第 5 课：敌人巡逻（多点环游/活性）+ 80px 滞回追击 + 玩家生命/无敌/击退 + 死亡重置层
+- 第 6 课：战斗闭环——鼠标指向扇形攻击 + 敌人类型（normal/fast/tank）+ 差异化掉落 + 金币 HUD
+
+像素素材管线：`assets/sprites/generate_sprites.ps1`（字符画 + 调色板，改完重跑）。后续课程见 `doc/lession/`（第 7 课预告：敌人状态机正式化）。
 
