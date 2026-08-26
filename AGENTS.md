@@ -79,7 +79,7 @@ $p = "D:\AboutGame\learn\2d_rpg_dungeon"
 
 ## 课程语境
 
-第 1~7 课已完成（GDScript + C# 双版本，`lessons/lesson03_playable/` 为第 3 课起的主战场）：
+第 1~8 课已完成（GDScript + C# 双版本，`lessons/lesson03_playable/` 为第 3 课起的主战场）：
 
 - 第 1 课：随机房间 + L 走廊 + 最近邻连接 + 固定种子（种子复现性 = 同种子 + 同 RNG 调用序列 = 同地图，跨语言逐格实测一致）
 - 第 2 课：TileMapLayer + placeholder/外部 TileSet
@@ -90,6 +90,9 @@ $p = "D:\AboutGame\learn\2d_rpg_dungeon"
 - 第 7 课：敌人三态状态机（PATROL/CHASE/RETURN）+ 视线检测（8px 采样隔墙不发现）
   + 视野半角 ±75° + AStar 追击 + 面包屑原路返回 + 三通道卡住检测（停滞/蠕动/绕圈）
   + 四态变色 + 警报叹号
+- 第 8 课：HUD 独立场景化（hud.tscn + CanvasLayer/VBoxContainer）
+  + 信号解耦（health_changed 状态信号 vs damaged/died 事件信号——治疗不发红屏的关键）
+  + 层数系统（出口 +1，金币跨层保留）+ 作业全清（心形/钥匙金币图标化状态点亮/受伤红屏渐隐/死亡大字）
 
-像素素材管线：`assets/sprites/generate_sprites.ps1`（字符画 + 调色板，改完重跑）。ELI5 讲解页归档 `doc/eli5/`。后续课程见 `doc/lession/`（第 8~21 课文档已就绪，下一课：HUD 与游戏状态面板）。
+像素素材管线：`assets/sprites/generate_sprites.ps1`（字符画 + 调色板，改完重跑）。ELI5 讲解页归档 `doc/eli5/`。后续课程见 `doc/lession/`（第 9~21 课文档已就绪，下一课：房间检测与小地图）。
 
