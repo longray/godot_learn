@@ -1275,11 +1275,39 @@ func _on_player_died() -> void:
 # =========================
 
 func _setup_minimap() -> void:
-	# generate() 末尾：注入世界尺寸、房间矩形与走廊数据（方案 C）
+	# generate() 末尾：注入世界尺寸、房间矩形、走廊数据与类型表
 	if minimap and minimap.has_method("setup"):
-		minimap.setup(map_width, map_height, rooms, corridors)
+		minimap.setup(map_width, map_height, rooms, corridors, _build_room_types())
 
 	_update_minimap()
+
+
+func _build_room_types() -> Array[int]:
+	# 作业 4（第 9 课）：房间类型表（纯读取已有 POI 格子，不碰 RNG）
+	# 优先级：入口 > 出口 > 宝箱 > 怪物 > 普通（导航价值高的覆盖低的）
+	var types: Array[int] = []
+	types.resize(rooms.size())
+	types.fill(MiniMap.ROOM_NORMAL)
+
+	for cell in treasure_cells:
+		var idx := _find_room_index_containing_cell(cell)
+		if idx >= 0:
+			types[idx] = MiniMap.ROOM_TREASURE
+
+	for cell in monster_cells:
+		var idx := _find_room_index_containing_cell(cell)
+		if idx >= 0 and types[idx] == MiniMap.ROOM_NORMAL:
+			types[idx] = MiniMap.ROOM_MONSTER
+
+	var entrance_idx := _find_room_index_containing_cell(entrance_cell)
+	if entrance_idx >= 0:
+		types[entrance_idx] = MiniMap.ROOM_ENTRANCE
+
+	var exit_idx := _find_room_index_containing_cell(exit_cell)
+	if exit_idx >= 0:
+		types[exit_idx] = MiniMap.ROOM_EXIT
+
+	return types
 
 
 func _update_minimap() -> void:
@@ -1293,7 +1321,9 @@ func _update_minimap() -> void:
 			has_key,
 			key_cell,
 			# 作业 1（第 9 课）：出口所在房间索引（探索过才画红点）
-			_find_room_index_containing_cell(exit_cell)
+			_find_room_index_containing_cell(exit_cell),
+			# 作业 2（第 9 课）：钥匙所在房间索引（探索过才画黄点）
+			_find_room_index_containing_cell(key_cell)
 		)
 
 	# 作业 5（第 9 课）：探索进度行（探索变化时同步刷新）
