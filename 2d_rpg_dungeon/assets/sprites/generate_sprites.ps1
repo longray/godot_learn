@@ -427,6 +427,36 @@ Draw-Frame $potionBmp $potion $potionMap 0 0 "potion"
 Save-AndVerify $potionBmp (Join-Path $outDir "potion.png") $tile $tile
 $potionBmp.Dispose()
 
+# =========================================================
+# 警报叹号（敌人发现玩家头顶提示，黄色感叹号+高光）
+# Y=主黄 L=亮黄
+# =========================================================
+$alertMap = New-ColorMap `
+	@("Y", @(255, 210, 60)) @("L", @(255, 240, 160))
+$alert = @(
+	"................",
+	".......LY.......",
+	".......YY.......",
+	".......YY.......",
+	".......YY.......",
+	".......YY.......",
+	".......YY.......",
+	".......YY.......",
+	".......YY.......",
+	"................",
+	".......YY.......",
+	".......YY.......",
+	"................",
+	"................",
+	"................",
+	"................"
+)
+
+$alertBmp = New-Object System.Drawing.Bitmap $tile, $tile
+Draw-Frame $alertBmp $alert $alertMap 0 0 "alert"
+Save-AndVerify $alertBmp (Join-Path $outDir "alert.png") $tile $tile
+$alertBmp.Dispose()
+
 # 旧单帧 player.png 已被 player_sheet.png 取代（down-idle 帧），删除避免混淆
 $oldPlayer = Join-Path $outDir "player.png"
 if (Test-Path $oldPlayer) {

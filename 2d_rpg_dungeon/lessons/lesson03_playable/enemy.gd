@@ -99,6 +99,10 @@ var _look_dir := 1.0
 
 @onready var hitbox: Area2D = $Hitbox
 @onready var sprite: Sprite2D = $Sprite2D
+@onready var alert: Sprite2D = $Alert
+
+# 作业 3（第 7 课）：警报叹号剩余显示时间（>0 显示，_start_chase 触发）
+var _alert_t: float = 0.0
 
 
 func _ready() -> void:
@@ -121,7 +125,7 @@ func _process(delta: float) -> void:
 	var s := 1.0 + amp * sin(_t * 3.0)
 	sprite.scale = Vector2(s, s)
 
-	# modulate 三态协调（优先级：受击红 > 追击粉 > 类型基色）
+	# modulate 四态协调（作业 1：状态可视化——受击红 > 追击粉 > 返回蓝 > 类型基色）
 	# 踩坑：不能在受击回调里直接赋 modulate——本函数每帧覆盖会立刻冲掉闪烁
 	var base_color: Color = TYPE_COLOR.get(enemy_type, Color.WHITE)
 	if _flash_t > 0.0:
@@ -129,8 +133,15 @@ func _process(delta: float) -> void:
 		sprite.modulate = Color(1.0, 0.35, 0.35)
 	elif is_chasing:
 		sprite.modulate = Color(1.0, 0.6, 0.6)
+	elif state == EnemyState.RETURN:
+		sprite.modulate = Color(0.65, 0.8, 1.0)
 	else:
 		sprite.modulate = base_color
+
+	# 警报叹号倒计时（作业 3：发现玩家头顶显示 0.3s）
+	if _alert_t > 0.0:
+		_alert_t -= delta
+		alert.visible = _alert_t > 0.0
 
 	# 张望：等待中偶尔左右瞥一眼（身体微偏移模拟探头）
 	if _look_t > 0.0:
@@ -327,6 +338,10 @@ func _start_chase(target_player: Node2D) -> void:
 	stuck_time = 0.0
 	time_since_seen = 0.0
 	last_known_player_position = target_player.global_position
+
+	# 作业 3：发现玩家！头顶警报 0.3s
+	_alert_t = 0.3
+	alert.visible = true
 
 
 # =========================
