@@ -1,10 +1,19 @@
 extends CharacterBody2D
 
 # =========================
-# 第 5 课：简单巡逻敌人
-# 行为：出生点 <-> 房间中心 来回巡逻（数据驱动查询，不穿墙）
-#       玩家进入 Hitbox → 直调 take_damage（掉血+击退+无敌，逻辑在玩家侧）
+# 第 7 课：三态状态机敌人
+# PATROL 巡逻 → CHASE 追击 → RETURN 返回（显式 enum + 转换层）
+# 视线检测：沿线 8px 采样查墙（隔墙不发现）
+# 保留资产：多点环游/随机停顿/张望/呼吸三速/接触轮询/类型系统/受击三态
 # =========================
+
+enum EnemyState {
+	PATROL,
+	CHASE,
+	RETURN,
+}
+
+# ---------- 基础移动 ----------
 
 @export var speed: float = 70.0
 
@@ -14,17 +23,16 @@ extends CharacterBody2D
 
 @export var arrival_distance: float = 4.0
 @export var collision_radius: float = 4.0
-@export var contact_damage: int = 1
 
-# 作业 3：发现玩家追击（半径 80px；脱离需 1.25 倍——滞回防抖，边缘反复横跳）
-# 倍率 1.15：fast 126 / normal 80 / tank 52——全员低于玩家 140，风筝普适
-@export var chase_radius: float = 80.0
-@export var chase_speed_multiplier: float = 1.15
+# ---------- 接触伤害 ----------
+
+@export var contact_damage: int = 1
 
 # 接触伤害判定半径（≈ Hitbox 6.4 + 玩家碰撞体 5）
 @export var contact_range: float = 11.0
 
-# 第 6 课：生命（作业 4（第 5 课）补完——敌人可被攻击消灭）
+# ---------- 生命 ----------
+
 @export var max_health: int = 2
 
 # 作业 3（第 6 课）：敌人类型（normal/fast/tank——setup 时按类型重塑属性与配色）
@@ -37,28 +45,50 @@ const TYPE_COLOR := {
 	"tank": Color(1.0, 0.78, 0.55),   # 偏橙（厚重）
 }
 
-var chase_speed: float = 0.0
+# ---------- 追击参数（第 7 课：发现/脱离分离 + 视线） ----------
+
+@export var detection_range: float = 90.0
+@export var lose_range: float = 150.0
+@export var lose_sight_time: float = 0.8
+# 倍率 1.15：fast 126 / normal 80 / tank 52——全员低于玩家 140，风筝普适
+@export var chase_speed_multiplier: float = 1.15
+
+# ---------- 外部数据 ----------
 
 var dungeon: Node
 var patrol_points: Array = []
-var player: Node2D = null
+
+# ---------- 巡逻状态 ----------
 
 var current_point_index: int = 0
 var is_waiting: bool = false
 var wait_remaining: float = 0.0
-var is_chasing: bool = false
 
-# 第 6 课：生命与受击
+# ---------- 生命状态 ----------
+
 var health: int = 2
 var dead: bool = false
 var _flash_t: float = 0.0  # 受击闪烁剩余时间（>0 时 modulate 优先级最高）
+
+# ---------- AI 状态（第 7 课） ----------
+
+var state: EnemyState = EnemyState.PATROL
+var is_chasing: bool = false  # 视觉用（呼吸加速/泛红）——CHASE 态镜像
+
+var player: Node2D = null
+var last_known_player_position := Vector2.ZERO
+var time_since_seen: float = 0.0
+var stuck_time: float = 0.0
+var home_position := Vector2.ZERO
+
+var chase_speed: float = 0.0
 
 # 呼吸动画计时
 var _t := 0.0
 
 # 张望状态机（仅等待中触发；运行期随机，不进种子序列）
-var _look_cool := 0.0  # 距下次张望的倒计时
-var _look_t := 0.0     # 张望进行中的剩余时间（>0 = 张望中）
+var _look_cool := 0.0
+var _look_t := 0.0
 var _look_dir := 1.0
 
 @onready var hitbox: Area2D = $Hitbox
@@ -66,7 +96,7 @@ var _look_dir := 1.0
 
 
 func _ready() -> void:
-	pass  # 接触伤害改为 _physics_process 每帧距离检测；Hitbox 保留供未来攻击判定
+	pass  # 接触伤害为 _physics_process 每帧距离检测；Hitbox 保留供未来扩展
 
 
 func _process(delta: float) -> void:
@@ -109,7 +139,7 @@ func _process(delta: float) -> void:
 			else:
 				sprite.position.x = 0.0
 				_look_cool = randf_range(1.5, 3.5)
-	elif is_waiting:
+	elif is_waiting and state == EnemyState.PATROL:
 		_look_cool -= delta
 
 		if _look_cool <= 0.0:
@@ -137,17 +167,23 @@ func setup(dungeon_reference: Node, points: Array) -> void:
 	speed *= randf_range(0.85, 1.15)
 	chase_speed = speed * chase_speed_multiplier
 
-	# 作业 3：玩家引用（追击目标）
-	# 踩坑：敌人 setup 在玩家生成之前执行（generate 顺序 spawn_poi → player），
-	# 此刻查找必为 null——改为懒获取：首次需要时找一次，缓存后续直用
-	_get_player_ref()
-
 	_look_cool = randf_range(1.0, 2.5)
 
+	# 第 7 课：AI 状态复位
+	state = EnemyState.PATROL
+	is_chasing = false
+	time_since_seen = 0.0
+	stuck_time = 0.0
+
 	if patrol_points.is_empty():
+		home_position = global_position
+		last_known_player_position = global_position
 		return
 
 	global_position = patrol_points[0]
+	home_position = patrol_points[0]
+	last_known_player_position = global_position
+
 	current_point_index = 0
 
 	if patrol_points.size() > 1:
@@ -158,27 +194,32 @@ func setup(dungeon_reference: Node, points: Array) -> void:
 
 
 func _apply_type_template() -> void:
-	# 作业 3：类型模板（个体差异/巡逻参数等后续修改叠加其上）
+	# 作业 3（第 6 课）：类型模板 + 第 7 课参数迁移（detection/lose_range）
 	match enemy_type:
 		"fast":
 			speed = 110.0
 			max_health = 1
 			contact_damage = 1
-			chase_radius = 100.0
+			detection_range = 110.0
+			lose_range = 170.0
 		"tank":
 			speed = 45.0
 			max_health = 4
 			contact_damage = 2
-			chase_radius = 70.0
+			detection_range = 70.0
+			lose_range = 120.0
 		_:
-			# normal：保持导出默认（70 / 2 / 1 / 80）
+			# normal：保持导出默认（70 / 2 / 1 / 90 / 150）
 			pass
 
 	health = max_health
 
 
+# =========================
+# 第 6 课：受击 / 死亡
+# =========================
+
 func take_damage(amount: int, source_position: Vector2 = Vector2.ZERO) -> void:
-	# 第 6 课：被玩家攻击（dead 后不再响应，防尸体补刀）
 	if dead:
 		return
 
@@ -191,7 +232,7 @@ func take_damage(amount: int, source_position: Vector2 = Vector2.ZERO) -> void:
 		_die()
 		return
 
-	_flash_t = 0.12  # 受击闪烁（_process 里按优先级渲染）
+	_flash_t = 0.12
 
 
 func _die() -> void:
@@ -202,11 +243,9 @@ func _die() -> void:
 	queue_free()
 
 
-func _get_player_ref() -> Node2D:
-	if player == null and dungeon is Node:
-		player = dungeon.get_node_or_null("Player")
-	return player
-
+# =========================
+# 主循环：状态机调度（第 7 课）
+# =========================
 
 func _physics_process(delta: float) -> void:
 	if dead or dungeon == null or not dungeon.has_method("is_world_position_walkable"):
@@ -214,29 +253,80 @@ func _physics_process(delta: float) -> void:
 		move_and_slide()
 		return
 
-	# 作业 3：追击判定（滞回：进入 80px，脱离 100px——防止边缘反复横跳）
 	var player_ref := _get_player_ref()
+
+	# 接触伤害：每帧距离检测（踩坑：body_entered 持续重叠不重发）
 	if is_instance_valid(player_ref):
-		# 接触伤害：每帧距离检测（踩坑：body_entered 只在进入瞬间触发一次，
-		# 玩家站不动持续重叠时永不重发 → 无敌结束后不再扣血。
-		# take_damage 自带无敌检查，每帧调用在无敌期零伤害，结束后立即补刀）
 		if global_position.distance_to(player_ref.global_position) < contact_range:
 			if player_ref.has_method("take_damage"):
 				player_ref.take_damage(contact_damage, global_position)
 
-		var dist := global_position.distance_to(player_ref.global_position)
+	_update_state(delta, player_ref)
 
-		if not is_chasing and dist < chase_radius:
-			is_chasing = true
-			is_waiting = false  # 立刻中断停顿扑向玩家
-		elif is_chasing and dist > chase_radius * 1.25:
-			is_chasing = false
+	match state:
+		EnemyState.PATROL:
+			_process_patrol(delta)
+		EnemyState.CHASE:
+			_process_chase(delta)
+		EnemyState.RETURN:
+			_process_return(delta)
 
-	if is_chasing and is_instance_valid(player_ref):
-		_chase_move(delta)
-		move_and_slide()
-		return
 
+func _get_player_ref() -> Node2D:
+	if player == null and dungeon is Node:
+		player = dungeon.get_node_or_null("Player")
+	return player
+
+
+# =========================
+# 状态转换（第 7 课核心）
+# =========================
+
+func _update_state(delta: float, player_ref: Node2D) -> void:
+	match state:
+		EnemyState.PATROL:
+			if _is_player_visible(player_ref, detection_range):
+				_start_chase(player_ref)
+
+		EnemyState.CHASE:
+			if player_ref == null or not is_instance_valid(player_ref):
+				state = EnemyState.RETURN
+				is_chasing = false
+				stuck_time = 0.0
+				return
+
+			if _is_player_visible(player_ref, lose_range):
+				last_known_player_position = player_ref.global_position
+				time_since_seen = 0.0
+			else:
+				time_since_seen += delta
+
+			var distance_to_player := global_position.distance_to(player_ref.global_position)
+
+			if distance_to_player > lose_range or time_since_seen > lose_sight_time:
+				state = EnemyState.RETURN
+				is_chasing = false
+				stuck_time = 0.0
+
+		EnemyState.RETURN:
+			if _is_player_visible(player_ref, detection_range):
+				_start_chase(player_ref)
+
+
+func _start_chase(target_player: Node2D) -> void:
+	state = EnemyState.CHASE
+	is_chasing = true
+	is_waiting = false
+	stuck_time = 0.0
+	time_since_seen = 0.0
+	last_known_player_position = target_player.global_position
+
+
+# =========================
+# 巡逻（保留：多点环游 + 随机停顿）
+# =========================
+
+func _process_patrol(delta: float) -> void:
 	if patrol_points.size() <= 1:
 		# 无路径或单点：原地待机
 		velocity = Vector2.ZERO
@@ -255,43 +345,161 @@ func _physics_process(delta: float) -> void:
 		return
 
 	var target: Vector2 = patrol_points[current_point_index]
-	var direction: Vector2 = target - global_position
-	var distance: float = direction.length()
+	var arrived := _move_towards(target, speed, delta)
 
-	if distance <= arrival_distance:
-		# 到点：随机停顿后换下一个巡逻点（每点时长不同 → 打破节奏）
+	if arrived:
 		is_waiting = true
 		wait_remaining = randf_range(wait_time_min, wait_time_max)
 		velocity = Vector2.ZERO
-		move_and_slide()
-		return
+	elif velocity == Vector2.ZERO:
+		# 巡逻被墙卡住：切换下一个巡逻点
+		current_point_index = (current_point_index + 1) % patrol_points.size()
 
-	var desired_velocity := direction.normalized() * speed
-	_move_with_wall_check(desired_velocity, delta)
 	move_and_slide()
 
 
-func _chase_move(delta: float) -> void:
-	# 作业 3：直线扑向玩家（数据驱动 + 贴墙滑动——被墙挡也能绕）
-	var direction: Vector2 = player.global_position - global_position
-	var desired_velocity := direction.normalized() * chase_speed
-	_move_with_wall_check(desired_velocity, delta)
+# =========================
+# 追击（第 7 课：奔向最后已知位置，非玩家实时坐标）
+# =========================
+
+func _process_chase(delta: float) -> void:
+	var target := last_known_player_position
+	var arrived := _move_towards(target, chase_speed, delta)
+
+	if arrived:
+		# 到达最后已知位置但看不到玩家：转返回
+		if time_since_seen > 0.05:
+			state = EnemyState.RETURN
+			is_chasing = false
+			stuck_time = 0.0
+	elif velocity == Vector2.ZERO:
+		# 卡住检测：持续无法移动超过 0.5s 放弃
+		stuck_time += delta
+
+		if stuck_time > 0.5:
+			state = EnemyState.RETURN
+			is_chasing = false
+			stuck_time = 0.0
+	else:
+		stuck_time = 0.0
+
+	move_and_slide()
 
 
-func _move_with_wall_check(desired_velocity: Vector2, delta: float) -> void:
-	# 通用移动：目标位置可走直走；被挡则尝试单轴滑动（巡逻/追击共用）
+# =========================
+# 返回（第 7 课：先去最后所见位置搜索 → 再回最近巡逻点）
+# =========================
+
+func _process_return(delta: float) -> void:
+	# 阶段 1：还没到过最后所见位置 → 先去搜一圈
+	var target: Vector2
+	var searching := false
+
+	if global_position.distance_to(last_known_player_position) > arrival_distance * 2.0:
+		target = last_known_player_position
+		searching = true
+	else:
+		# 阶段 2：搜索过了 → 回最近巡逻点
+		var target_index := _get_closest_patrol_point_index()
+		target = patrol_points[target_index] if not patrol_points.is_empty() else home_position
+
+	var arrived := _move_towards(target, speed, delta)
+
+	if arrived:
+		if searching:
+			# 搜完没发现 → 标记搜索完成，继续走回家
+			last_known_player_position = global_position
+		else:
+			state = EnemyState.PATROL
+			current_point_index = _get_closest_patrol_point_index()
+			is_waiting = false
+			stuck_time = 0.0
+	elif velocity == Vector2.ZERO:
+		stuck_time += delta
+
+		if stuck_time > 0.8:
+			# 返回路径一直被卡：强制回巡逻
+			state = EnemyState.PATROL
+			stuck_time = 0.0
+	else:
+		stuck_time = 0.0
+
+	move_and_slide()
+
+
+func _get_closest_patrol_point_index() -> int:
+	if patrol_points.is_empty():
+		return 0
+
+	var best_index := 0
+	var best_distance := 999999999.0
+
+	for i in patrol_points.size():
+		var distance := global_position.distance_squared_to(patrol_points[i])
+
+		if distance < best_distance:
+			best_distance = distance
+			best_index = i
+
+	return best_index
+
+
+# =========================
+# 移动辅助（文档版：返回 arrived 布尔 + 贴墙滑动）
+# =========================
+
+func _move_towards(target: Vector2, move_speed: float, delta: float) -> bool:
+	var direction := target - global_position
+	var distance := direction.length()
+
+	if distance <= arrival_distance:
+		velocity = Vector2.ZERO
+		return true
+
+	var desired_velocity := direction.normalized() * move_speed
 	var next_position := global_position + desired_velocity * delta
 
 	if dungeon.is_world_position_walkable(next_position, collision_radius):
 		velocity = desired_velocity
-		return
+		return false
 
+	# 贴墙滑动
 	var x_only := Vector2(next_position.x, global_position.y)
 	var y_only := Vector2(global_position.x, next_position.y)
 
 	if dungeon.is_world_position_walkable(x_only, collision_radius):
 		velocity = Vector2(desired_velocity.x, 0.0)
-	elif dungeon.is_world_position_walkable(y_only, collision_radius):
+		return false
+
+	if dungeon.is_world_position_walkable(y_only, collision_radius):
 		velocity = Vector2(0.0, desired_velocity.y)
-	else:
-		velocity = Vector2.ZERO
+		return false
+
+	velocity = Vector2.ZERO
+	return false
+
+
+# =========================
+# 视线检测（第 7 课核心：沿线采样查墙）
+# =========================
+
+func _is_player_visible(target: Node2D, range_limit: float) -> bool:
+	if target == null or not is_instance_valid(target):
+		return false
+
+	var distance := global_position.distance_to(target.global_position)
+
+	if distance > range_limit:
+		return false
+
+	# 沿敌人与玩家之间每 8px 采样，任一点是墙 → 视线被挡
+	var steps := int(distance / 8.0) + 1
+
+	for i in range(steps + 1):
+		var t := float(i) / float(steps)
+		var sample := global_position.lerp(target.global_position, t)
+
+		if not dungeon.is_world_position_walkable(sample, 0.0):
+			return false
+
+	return true
