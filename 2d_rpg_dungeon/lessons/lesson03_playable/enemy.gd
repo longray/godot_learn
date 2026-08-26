@@ -78,7 +78,13 @@ var is_chasing: bool = false  # 视觉用（呼吸加速/泛红）——CHASE �
 var player: Node2D = null
 var last_known_player_position := Vector2.ZERO
 var time_since_seen: float = 0.0
+
+# 卡住检测（第 7 课修复版）：进展检测而非速度检测——
+# 踩坑：贴墙滑动时 velocity ≠ 0 但无位移，原 velocity==0 判定永不触发
+#       → 怪在不可达目标（贴墙的最后所见位置）旁无限蹭墙
 var stuck_time: float = 0.0
+var _last_progress_pos := Vector2.ZERO
+
 var home_position := Vector2.ZERO
 
 var chase_speed: float = 0.0
@@ -174,6 +180,7 @@ func setup(dungeon_reference: Node, points: Array) -> void:
 	is_chasing = false
 	time_since_seen = 0.0
 	stuck_time = 0.0
+	_last_progress_pos = global_position
 
 	if patrol_points.is_empty():
 		home_position = global_position
@@ -365,6 +372,7 @@ func _process_patrol(delta: float) -> void:
 func _process_chase(delta: float) -> void:
 	var target := last_known_player_position
 	var arrived := _move_towards(target, chase_speed, delta)
+	_update_stuck(delta)
 
 	if arrived:
 		# 到达最后已知位置但看不到玩家：转返回
@@ -372,15 +380,10 @@ func _process_chase(delta: float) -> void:
 			state = EnemyState.RETURN
 			is_chasing = false
 			stuck_time = 0.0
-	elif velocity == Vector2.ZERO:
-		# 卡住检测：持续无法移动超过 0.5s 放弃
-		stuck_time += delta
-
-		if stuck_time > 0.5:
-			state = EnemyState.RETURN
-			is_chasing = false
-			stuck_time = 0.0
-	else:
+	elif stuck_time > 0.5:
+		# 无进展超 0.5s（含贴墙滑）：放弃追击
+		state = EnemyState.RETURN
+		is_chasing = false
 		stuck_time = 0.0
 
 	move_and_slide()
@@ -404,6 +407,7 @@ func _process_return(delta: float) -> void:
 		target = patrol_points[target_index] if not patrol_points.is_empty() else home_position
 
 	var arrived := _move_towards(target, speed, delta)
+	_update_stuck(delta)
 
 	if arrived:
 		if searching:
@@ -414,17 +418,24 @@ func _process_return(delta: float) -> void:
 			current_point_index = _get_closest_patrol_point_index()
 			is_waiting = false
 			stuck_time = 0.0
-	elif velocity == Vector2.ZERO:
-		stuck_time += delta
-
-		if stuck_time > 0.8:
-			# 返回路径一直被卡：强制回巡逻
-			state = EnemyState.PATROL
-			stuck_time = 0.0
-	else:
+	elif stuck_time > 0.8:
+		# 无进展超 0.8s（含贴墙滑到不可达点）：强制回巡逻
+		state = EnemyState.PATROL
 		stuck_time = 0.0
 
 	move_and_slide()
+
+
+# =========================
+# 卡住检测：0.8s 内位移不足 2px = 无进展（含顶墙滑/完全静止两种形态）
+# =========================
+
+func _update_stuck(delta: float) -> void:
+	if global_position.distance_to(_last_progress_pos) < 2.0:
+		stuck_time += delta
+	else:
+		stuck_time = 0.0
+		_last_progress_pos = global_position
 
 
 func _get_closest_patrol_point_index() -> int:
