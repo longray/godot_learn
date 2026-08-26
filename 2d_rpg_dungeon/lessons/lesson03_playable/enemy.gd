@@ -91,6 +91,7 @@ var stuck_time: float = 0.0
 var _last_progress_pos := Vector2.ZERO
 var _progress_check_t: float = 0.0
 var _progress_check_pos := Vector2.ZERO
+var _target_check_d: float = -1.0
 
 var home_position := Vector2.ZERO
 
@@ -102,6 +103,11 @@ var facing := Vector2.RIGHT
 # 作业 4（第 7 课）：AStar 追击——0.3s 重算路径，沿路点绕墙
 var _path_world: Array[Vector2] = []
 var _repath_timer: float = 0.0
+
+# 追击足迹（面包屑）：CHASE 时记录走过的格子，RETURN 原路回溯——
+# 来时的路必然通，比 AStar 更符合"原路返回"直觉且零卡死
+var _breadcrumb: Array[Vector2i] = []
+const BREADCRUMB_MAX := 512
 
 # 呼吸动画计时
 var _t := 0.0
@@ -208,6 +214,7 @@ func setup(dungeon_reference: Node, points: Array) -> void:
 	_last_progress_pos = global_position
 	_progress_check_t = 0.0
 	_progress_check_pos = global_position
+	_target_check_d = -1.0
 
 	if patrol_points.is_empty():
 		home_position = global_position
@@ -358,9 +365,18 @@ func _start_chase(target_player: Node2D) -> void:
 	time_since_seen = 0.0
 	last_known_player_position = target_player.global_position
 
+	# 面包屑：新一轮追击重新记录足迹（起点入栈）
+	_breadcrumb.clear()
+	_breadcrumb.append(_current_cell())
+
 	# 作业 3：发现玩家！头顶警报 0.3s
 	_alert_t = 0.3
 	alert.visible = true
+
+
+func _current_cell() -> Vector2i:
+	var tl: TileMapLayer = dungeon.tile_layer
+	return tl.local_to_map(tl.to_local(global_position)) if tl else Vector2i(-1, -1)
 
 
 # =========================
@@ -452,7 +468,19 @@ func _process_chase(delta: float) -> void:
 			target = _path_world[0] if not _path_world.is_empty() else last_known_player_position
 
 	var arrived := _move_towards(target, chase_speed, delta)
-	_update_stuck(delta)
+	_update_stuck(delta, target)
+
+	# 面包屑：进入新格子记录；去环——若新格已在栈浅层出现，
+	# 截断到该处（防绕圈追击时 A→B→A→B 重复入栈导致回溯打转）
+	var cell := _current_cell()
+	if cell != _breadcrumb.back() and cell.x >= 0:
+		var loop_at := _breadcrumb.rfind(cell)
+		if loop_at >= 0 and _breadcrumb.size() - loop_at <= 8:
+			_breadcrumb.resize(loop_at + 1)
+		else:
+			_breadcrumb.append(cell)
+			if _breadcrumb.size() > BREADCRUMB_MAX:
+				_breadcrumb.pop_front()
 
 	if arrived:
 		# 到达最终目标但看不到玩家：转返回
@@ -470,80 +498,112 @@ func _process_chase(delta: float) -> void:
 
 
 # =========================
-# 返回（第 7 课修复：AStar 寻路回家——直线回程隔墙必卡；
-# 先赴最后所见位置搜索 → 再回最近巡逻点，全程沿路径绕行）
+# 返回（第 7 课定稿：面包屑原路回溯优先，AStar 兜底）
+# 踩坑：固定目标下沿用 CHASE 的 0.3s 高频重算会引发起点振荡
+#       （每次重算首点可能在身后 → 来回走）——改为路径空才重算
 # =========================
 
 func _process_return(delta: float) -> void:
-	# 阶段 1：还没到过最后所见位置 → 先去搜一圈
+	# 阶段 1：还没到过最后所见位置 → 先去搜一圈（近距，AStar 一次算好）
 	var target: Vector2
 	var searching := false
 
 	if global_position.distance_to(last_known_player_position) > arrival_distance * 2.0:
 		target = last_known_player_position
 		searching = true
+	elif not _breadcrumb.is_empty():
+		# 阶段 2a：有足迹 → 原路回溯（来时的路必然通）
+		target = _breadcrumb_world(_breadcrumb.back())
+	elif not patrol_points.is_empty():
+		# 阶段 2b：无足迹 → AStar 回最近巡逻点
+		target = patrol_points[_get_closest_patrol_point_index()]
 	else:
-		# 阶段 2：搜索过了 → 回最近巡逻点
-		var target_index := _get_closest_patrol_point_index()
-		target = patrol_points[target_index] if not patrol_points.is_empty() else home_position
-
-	# AStar 路径重算（0.3s 节流；阶段切换时目标变了自然重算）
-	_repath_timer -= delta
-	if _repath_timer <= 0.0:
-		_repath_to(target)
+		target = home_position
 
 	var move_target := target
-	if not _path_world.is_empty():
-		move_target = _path_world[0]
 
-		if global_position.distance_to(move_target) <= arrival_distance:
-			_path_world.pop_front()
-			move_target = _path_world[0] if not _path_world.is_empty() else target
+	if searching or _breadcrumb.is_empty():
+		# AStar 模式：路径空才重算（固定目标高频重算会振荡）
+		if _path_world.is_empty():
+			_repath_to(target)
+
+		if not _path_world.is_empty():
+			move_target = _path_world[0]
+
+			if global_position.distance_to(move_target) <= arrival_distance:
+				_path_world.pop_front()
+				move_target = _path_world[0] if not _path_world.is_empty() else target
 
 	var arrived := _move_towards(move_target, speed, delta)
-	_update_stuck(delta)
+	_update_stuck(delta, move_target)
 
 	if arrived:
 		if searching:
-			# 搜完没发现 → 标记搜索完成，继续走回家
+			# 搜完没发现 → 标记搜索完成，走回家
 			last_known_player_position = global_position
+		elif not _breadcrumb.is_empty():
+			# 回溯到达一格：弹出继续下一格
+			_breadcrumb.pop_back()
 		else:
-			state = EnemyState.PATROL
-			current_point_index = _get_closest_patrol_point_index()
-			is_waiting = false
+			_return_complete()
+
+	if stuck_time > 1.0:
+		if not _breadcrumb.is_empty():
+			# 面包屑走不通（理论不会，防御）：清空换 AStar
+			_breadcrumb.clear()
 			stuck_time = 0.0
-	elif stuck_time > 0.8:
-		# 终极保底：AStar 仍卡死（极罕见）→ 瞬移回巡逻点，永不永久卡死
-		var idx := _get_closest_patrol_point_index()
-		global_position = patrol_points[idx] if not patrol_points.is_empty() else home_position
-		state = EnemyState.PATROL
-		current_point_index = idx
-		is_waiting = false
-		stuck_time = 0.0
+		elif stuck_time > 2.0:
+			# 终极保底：瞬移回巡逻点（正常游戏几乎不会触发）
+			var idx := _get_closest_patrol_point_index()
+			global_position = patrol_points[idx] if not patrol_points.is_empty() else home_position
+			_return_complete()
 
 	move_and_slide()
 
 
+func _breadcrumb_world(cell: Vector2i) -> Vector2:
+	var tl: TileMapLayer = dungeon.tile_layer
+	return tl.to_global(tl.map_to_local(cell))
+
+
+func _return_complete() -> void:
+	state = EnemyState.PATROL
+	current_point_index = _get_closest_patrol_point_index()
+	is_waiting = false
+	stuck_time = 0.0
+	_breadcrumb.clear()
+	_path_world.clear()
+
+
 # =========================
-# 卡住检测：停滞累积 + 每秒净位移健康检查（顶墙滑/蠕动/静止全覆盖）
+# 卡住检测（三通道）：
+# 1 停滞累积（<2px）；2 每秒净位移（<6px）；
+# 3 每秒目标接近量（<6px）——抓"贴墙绕圈"：每帧有位移、净位移也可能过，
+#   但距目标永不减小（绕着墙角转圈够不着路点）
 # =========================
 
-func _update_stuck(delta: float) -> void:
-	# 通道 1：即时停滞（<2px 累积计时）
+func _update_stuck(delta: float, target: Vector2) -> void:
+	# 通道 1：即时停滞
 	if global_position.distance_to(_last_progress_pos) < 2.0:
 		stuck_time += delta
 	else:
 		_last_progress_pos = global_position
 
-	# 通道 2：每 1s 净位移检查——蠕动（有微位移但无净进展）也会被识别
+	# 通道 2+3：每 1s 健康检查（净位移 + 目标接近量）
 	_progress_check_t += delta
 	if _progress_check_t >= 1.0:
-		if global_position.distance_to(_progress_check_pos) >= 6.0:
-			stuck_time = 0.0  # 每秒有净进展 → 健康
+		var net_moved := global_position.distance_to(_progress_check_pos)
+		var target_d := global_position.distance_to(target)
+		var target_progress := _target_check_d - target_d  # 正值=接近了
+
+		if net_moved >= 6.0 and (target_progress >= 6.0 or target_d < arrival_distance * 3.0):
+			stuck_time = 0.0  # 在走且在接近目标（或已很近）→ 健康
 		else:
-			stuck_time += 1.0  # 蠕动 → 直接顶过阈值
+			stuck_time += 1.0  # 停滞/蠕动/绕圈 → 顶格
+
 		_progress_check_t = 0.0
 		_progress_check_pos = global_position
+		_target_check_d = target_d
 
 
 func _get_closest_patrol_point_index() -> int:
