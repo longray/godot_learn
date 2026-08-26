@@ -27,6 +27,24 @@ public partial class Enemy : CharacterBody2D
 	// 接触伤害判定半径（≈ Hitbox 6.4 + 玩家碰撞体 5）
 	[Export] public float ContactRange { get; set; } = 11.0f;
 
+	// 第 6 课：生命（可被攻击消灭）
+	[Export] public int MaxHealth { get; set; } = 2;
+
+	// 作业 3（第 6 课）：敌人类型（normal/fast/tank——Setup 时按类型重塑属性与配色）
+	[Export] public string EnemyType { get; set; } = "normal";
+
+	// 类型配色（Sprite2D modulate 基色；受击/追击时在此基础上叠加）
+	private static readonly System.Collections.Generic.Dictionary<string, Color> TypeColor = new()
+	{
+		["normal"] = Colors.White,
+		["fast"] = new Color(0.75f, 0.85f, 1.0f),   // 偏蓝（敏捷）
+		["tank"] = new Color(1.0f, 0.78f, 0.55f),   // 偏橙（厚重）
+	};
+
+	public int Health { get; private set; } = 2;
+	public bool Dead { get; private set; }
+	private float _flashT;  // 受击闪烁剩余时间（>0 时 modulate 优先级最高）
+
 	public Node Dungeon { get; set; }
 	public Vector2[] PatrolPoints { get; private set; } = System.Array.Empty<Vector2>();
 
@@ -79,10 +97,21 @@ public partial class Enemy : CharacterBody2D
 		float s = 1.0f + amp * Mathf.Sin(_t * 3.0f);
 		_sprite.Scale = new Vector2(s, s);
 
-		// 追击时泛红警示（发现你了！）
-		_sprite.Modulate = _isChasing
-			? new Color(1.0f, 0.6f, 0.6f)
-			: Colors.White;
+		// modulate 三态协调（优先级：受击红 > 追击粉 > 类型基色）
+		Color baseColor = TypeColor.TryGetValue(EnemyType, out Color c) ? c : Colors.White;
+		if (_flashT > 0.0f)
+		{
+			_flashT -= dt;
+			_sprite.Modulate = new Color(1.0f, 0.35f, 0.35f);
+		}
+		else if (_isChasing)
+		{
+			_sprite.Modulate = new Color(1.0f, 0.6f, 0.6f);
+		}
+		else
+		{
+			_sprite.Modulate = baseColor;
+		}
 
 		// 张望：等待中偶尔左右瞥一眼（身体微偏移模拟探头）
 		if (_lookT > 0.0f)
@@ -134,6 +163,14 @@ public partial class Enemy : CharacterBody2D
 		Dungeon = dungeonReference;
 		PatrolPoints = points;
 
+		// 第 6 课：每只满血出场
+		Health = MaxHealth;
+		Dead = false;
+		_flashT = 0.0f;
+
+		// 作业 3：按类型重塑（在速度个体差异之前应用基础模板）
+		ApplyTypeTemplate();
+
 		// 速度个体差异 ±15%（运行期随机：每次玩都不同，群体不齐步）
 		Speed *= RandRange(0.85f, 1.15f);
 		_chaseSpeed = Speed * ChaseSpeedMultiplier;
@@ -157,6 +194,68 @@ public partial class Enemy : CharacterBody2D
 		_waitRemaining = 0.0f;
 	}
 
+	private void ApplyTypeTemplate()
+	{
+		// 作业 3：类型模板（个体差异/巡逻参数等后续修改叠加其上）
+		switch (EnemyType)
+		{
+			case "fast":
+				Speed = 110.0f;
+				MaxHealth = 1;
+				ContactDamage = 1;
+				ChaseRadius = 100.0f;
+				break;
+			case "tank":
+				Speed = 45.0f;
+				MaxHealth = 4;
+				ContactDamage = 2;
+				ChaseRadius = 70.0f;
+				break;
+			default:
+				// normal：保持导出默认（70 / 2 / 1 / 80）
+				break;
+		}
+
+		Health = MaxHealth;
+	}
+
+	// =========================
+	// 第 6 课：受击 / 死亡
+	// =========================
+
+	public void TakeDamage(int amount, Vector2 sourcePosition = default)
+	{
+		// dead 后不再响应，防尸体补刀
+		if (Dead)
+		{
+			return;
+		}
+
+		Health -= amount;
+
+		GD.Print("敌人受击，剩余生命：", Health);
+
+		if (Health <= 0)
+		{
+			Dead = true;
+			Die();
+			return;
+		}
+
+		_flashT = 0.12f;
+	}
+
+	private void Die()
+	{
+		// 死亡处理交 Main（掉落判定/动态实体移除）；敌人只负责自己消失
+		if (Dungeon is DungeonPlayable dungeon)
+		{
+			dungeon.OnEnemyDied(this, GlobalPosition);
+		}
+
+		QueueFree();
+	}
+
 	private Player GetPlayerRef()
 	{
 		if (_player == null && Dungeon is Node node)
@@ -170,7 +269,7 @@ public partial class Enemy : CharacterBody2D
 	{
 		float dt = (float)delta;
 
-		if (Dungeon is not DungeonPlayable dungeon
+		if (Dead || Dungeon is not DungeonPlayable dungeon
 			|| PatrolPoints.Length <= 1)
 		{
 			Velocity = Vector2.Zero;

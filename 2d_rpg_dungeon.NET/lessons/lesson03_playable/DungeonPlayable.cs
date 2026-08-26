@@ -68,6 +68,10 @@ public partial class DungeonPlayable : Node2D
 	[Export(PropertyHint.Range, "0,12")] public int MinMonsters { get; set; } = 2;
 	[Export(PropertyHint.Range, "0,12")] public int MaxMonsters { get; set; } = 6;
 
+	// 第 6 课：掉落参数（死亡掉率 0.7；掉落物中 0.25 是药水、0.75 是金币）
+	[Export(PropertyHint.Range, "0.0,1.0")] public float EnemyDropChance { get; set; } = 0.7f;
+	[Export(PropertyHint.Range, "0.0,1.0")] public float EnemyPotionChance { get; set; } = 0.25f;
+
 	// ---------- 数据 ----------
 
 	private const int CellWall = 0;
@@ -119,6 +123,7 @@ public partial class DungeonPlayable : Node2D
 	// HUD 引用（场景里的 CanvasLayer > Label）
 	private Label _keyLabel;
 	private Label _treasureLabel;
+	private Label _goldLabel;
 	private HBoxContainer _healthUi;
 
 	// 作业 1（第 5 课）：心形图标纹理
@@ -134,6 +139,13 @@ public partial class DungeonPlayable : Node2D
 		GD.Load<Texture2D>("res://assets/sprites/chest.png");
 	private static readonly Texture2D MonsterTexture =
 		GD.Load<Texture2D>("res://assets/sprites/monster.png");
+	private static readonly Texture2D GoldTexture =
+		GD.Load<Texture2D>("res://assets/sprites/gold.png");
+	private static readonly Texture2D PotionTexture =
+		GD.Load<Texture2D>("res://assets/sprites/potion.png");
+
+	// 第 6 课：金币计数（跨层保留——玩家长期资源）
+	public int GoldCount { get; private set; }
 
 	// ---------- 互操作/测试访问器（int[,] 不能直接编组给 GDScript） ----------
 
@@ -175,6 +187,7 @@ public partial class DungeonPlayable : Node2D
 		_pathOverlay = GetNodeOrNull<PathOverlay>("PathOverlay");
 		_keyLabel = GetNodeOrNull<Label>("HUD/KeyLabel");
 		_treasureLabel = GetNodeOrNull<Label>("HUD/TreasureLabel");
+		_goldLabel = GetNodeOrNull<Label>("HUD/GoldLabel");
 		_healthUi = GetNodeOrNull<HBoxContainer>("HUD/HealthUI");
 
 		if (_tileLayer == null)
@@ -1289,6 +1302,16 @@ public partial class DungeonPlayable : Node2D
 				AddChild(e);
 
 				e.GlobalPosition = GetCellWorldPosition(cell);
+
+				// 作业 3（第 6 课）：加权随机分配类型（60% 普通 / 25% 敏捷 / 15% 坦克）
+				float roll = _rng.Randf();
+				e.EnemyType = roll switch
+				{
+					< 0.60f => "normal",
+					< 0.85f => "fast",
+					_ => "tank",
+				};
+
 				e.Setup(this, MakePatrolPoints(cell));
 
 				_dynamicEntities.Add(e);
@@ -1395,6 +1418,125 @@ public partial class DungeonPlayable : Node2D
 		}
 
 		entity.QueueFree();
+	}
+
+	// =========================
+	// 第 6 课：敌人死亡掉落（金币/药水）
+	// =========================
+
+	public void RemoveDynamicEntity(Node entity)
+	{
+		_dynamicEntities.Remove(entity);
+	}
+
+	public void OnEnemyDied(Node enemy, Vector2 deathPosition)
+	{
+		// 作业 4（第 6 课）：差异化掉落——按敌人类型决定掉率与掉落表
+		RemoveDynamicEntity(enemy);
+
+		float dropChance = EnemyDropChance;
+		float potionChance = EnemyPotionChance;
+
+		string etype = enemy.Get("enemy_type").ToString();
+		switch (etype)
+		{
+			case "fast":
+				// 敏捷怪：掉率低但必掉金币（跑得快击杀难，奖励集中）
+				dropChance = 0.5f;
+				potionChance = 0.0f;
+				break;
+			case "tank":
+				// 坦克怪：必掉且高概率药水（硬仗厚奖）
+				dropChance = 1.0f;
+				potionChance = 0.6f;
+				break;
+		}
+
+		if (_rng.Randf() < dropChance)
+		{
+			SpawnDropAtPosition(deathPosition, potionChance);
+		}
+	}
+
+	private void SpawnDropAtPosition(Vector2 worldPosition, float potionChance = -1.0f)
+	{
+		// potionChance < 0 时用全局默认（保持文档版调用兼容）
+		if (potionChance < 0.0f)
+		{
+			potionChance = EnemyPotionChance;
+		}
+
+		string dropType = _rng.Randf() < potionChance ? "potion" : "gold";
+
+		CreateDropArea(dropType, worldPosition);
+	}
+
+	private void CreateDropArea(string dropType, Vector2 worldPosition)
+	{
+		var area = new Area2D
+		{
+			Monitoring = true,
+			CollisionLayer = 0,
+			CollisionMask = 1,
+		};
+
+		var collision = new CollisionShape2D
+		{
+			Shape = new CircleShape2D { Radius = CellSize * 0.25f },
+		};
+		area.AddChild(collision);
+
+		// 像素素材可视化（金币/药水）+ 上下浮动（吸引注意："地上有东西"）
+		var visual = new Sprite2D
+		{
+			Texture = dropType == "gold" ? GoldTexture : PotionTexture,
+		};
+		area.AddChild(visual);
+
+		var tween = area.CreateTween().SetLoops();
+		tween.TweenProperty(visual, "position:y", -1.5f, 0.5f).SetTrans(Tween.TransitionType.Sine);
+		tween.TweenProperty(visual, "position:y", 0.0f, 0.5f).SetTrans(Tween.TransitionType.Sine);
+
+		area.AddToGroup("drop");
+		area.BodyEntered += body =>
+		{
+			if (!body.IsInGroup("player"))
+			{
+				return;
+			}
+
+			if (dropType == "gold")
+			{
+				GoldCount++;
+				GD.Print("捡到金币，当前金币：", GoldCount);
+				UpdateGoldHud();
+			}
+			else if (dropType == "potion")
+			{
+				if (body.HasMethod("heal"))
+				{
+					body.Call("heal", 1);
+				}
+				GD.Print("捡到药水并恢复生命。");
+			}
+
+			RemoveEntity(area);
+		};
+
+		AddChild(area);
+		area.GlobalPosition = worldPosition;
+
+		_dynamicEntities.Add(area);
+	}
+
+	private void UpdateGoldHud()
+	{
+		// 作业 5（第 6 课）：金币计数（跨层保留，只在拾取时刷新）
+		if (_goldLabel != null)
+		{
+			_goldLabel.Text = $"金币：{GoldCount}";
+			_goldLabel.AddThemeColorOverride("font_color", new Color(1.0f, 0.85f, 0.3f));
+		}
 	}
 
 	// =========================

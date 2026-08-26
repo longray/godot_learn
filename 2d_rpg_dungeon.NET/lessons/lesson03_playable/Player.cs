@@ -31,9 +31,26 @@ public partial class Player : CharacterBody2D
 	[Export] public int MaxHealth { get; set; } = 3;
 	[Export] public float InvincibilityTime { get; set; } = 0.8f;
 
+	// =========================
+	// 第 6 课：攻击（临时 Area2D 方案——生成→存在 0.08s→销毁）
+	// =========================
+
+	[Export] public int AttackDamage { get; set; } = 1;
+	[Export] public float AttackCooldown { get; set; } = 0.35f;
+	[Export] public float AttackDuration { get; set; } = 0.08f;
+	[Export] public float AttackRadius { get; set; } = 12.0f;
+	[Export] public float AttackOffset { get; set; } = 16.0f;
+
+	// 作业 1（第 6 课）：自定义攻击动作 attack（鼠标左键/空格/J，Input Map 配置）
+	private const string AttackAction = "attack";
+
 	public int Health { get; private set; } = 3;
 	public bool Invincible { get; private set; }
 	public Vector2 Knockback { get; private set; }
+
+	// 朝向（动画用随移动；攻击朝向独立——鼠标指哪砍哪）
+	public Vector2 Facing { get; private set; } = Vector2.Right;
+	private float _attackCooldownRemaining;
 
 	// =========================
 	// 四向行走动画（spritesheet 3 列 = 迈A/站立/迈B，3 行 = 下/上/侧面）
@@ -151,6 +168,20 @@ public partial class Player : CharacterBody2D
 		Vector2 desiredVelocity = inputVector == Vector2.Zero
 			? Vector2.Zero
 			: inputVector.Normalized() * Speed;
+
+		// 朝向（动画用）随移动更新；攻击朝向独立——见 Attack()（鼠标指向）
+		if (inputVector != Vector2.Zero)
+		{
+			Facing = inputVector.Normalized();
+		}
+
+		// 第 6 课：攻击（冷却中不可发）
+		_attackCooldownRemaining = Mathf.Max(0.0f, _attackCooldownRemaining - dt);
+
+		if (Input.IsActionJustPressed(AttackAction) && _attackCooldownRemaining <= 0.0f)
+		{
+			Attack();
+		}
 
 		// 第 5 课：移动 = 意图速度 + 击退速度（击退随时间衰减）
 		Vector2 moveVelocity = desiredVelocity + Knockback;
@@ -275,5 +306,87 @@ public partial class Player : CharacterBody2D
 	private void NotifyHealthUi()
 	{
 		Dungeon?.UpdateHealthUi(Health, MaxHealth);
+	}
+
+	// =========================
+	// 第 6 课：攻击与治疗
+	// =========================
+
+	public void Heal(int amount)
+	{
+		Health = Mathf.Min(MaxHealth, Health + amount);
+		GD.Print("恢复生命，当前生命：", Health);
+
+		NotifyHealthUi();
+	}
+
+	private void Attack()
+	{
+		// 攻击朝向与移动朝向解耦：鼠标指哪砍哪（后退反手砍，风筝战术成立）
+		Vector2 aim = GetGlobalMousePosition() - GlobalPosition;
+		if (aim.LengthSquared() > 1.0f)
+		{
+			Facing = aim.Normalized();
+		}
+		// 鼠标贴在玩家身上（零向量）→ 沿用上次 Facing
+
+		_attackCooldownRemaining = AttackCooldown;
+
+		var hitbox = new Area2D
+		{
+			// 只检测敌人（Enemy 根节点在 Layer 2）
+			CollisionLayer = 0,
+			CollisionMask = 2,
+			Position = Facing * AttackOffset,
+		};
+
+		var collision = new CollisionShape2D
+		{
+			Shape = new CircleShape2D { Radius = AttackRadius },
+		};
+		hitbox.AddChild(collision);
+
+		// 攻击可视化（作业 2：朝向扇形——圆心在玩家、顶点指向攻击方向）
+		float halfArc = Mathf.DegToRad(60.0f);
+		Vector2[] fan =
+		{
+			Vector2.Zero,
+			new Vector2(AttackRadius, 0).Rotated(-halfArc),
+			new Vector2(AttackRadius, 0).Rotated(-halfArc * 0.5f),
+			new Vector2(AttackRadius, 0),
+			new Vector2(AttackRadius, 0).Rotated(halfArc * 0.5f),
+			new Vector2(AttackRadius, 0).Rotated(halfArc),
+		};
+
+		var visual = new Polygon2D
+		{
+			Polygon = fan,
+			Rotation = Facing.Angle(),
+			Position = -Facing * AttackOffset,
+			Color = new Color(1.0f, 1.0f, 1.0f, 0.35f),
+		};
+		hitbox.AddChild(visual);
+
+		hitbox.BodyEntered += body =>
+		{
+			if (body.HasMethod("take_damage"))
+			{
+				body.Call("take_damage", AttackDamage, GlobalPosition);
+			}
+		};
+
+		AddChild(hitbox);
+
+		_ = DisposeHitboxAfter(hitbox, AttackDuration);
+	}
+
+	private async System.Threading.Tasks.Task DisposeHitboxAfter(Area2D hitbox, float delay)
+	{
+		await ToSignal(GetTree().CreateTimer(delay), SceneTreeTimer.SignalName.Timeout);
+
+		if (GodotObject.IsInstanceValid(hitbox))
+		{
+			hitbox.QueueFree();
+		}
 	}
 }
