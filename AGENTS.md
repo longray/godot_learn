@@ -63,6 +63,7 @@ $p = "D:\AboutGame\learn\2d_rpg_dungeon"
 
 ## 踩坑记录
 
+- **C# 方法名不转 snake_case**：C# 方法/属性对引擎侧暴露为 PascalCase 原名——GDScript 的 `has_method("take_damage")` 对 C# 类永远 false（应查 `TakeDamage`）；C# 侧动态调用同理。**跨语言交互优先强类型 `is` 转换直调**，勿用字符串方法名（已实测：攻击命中、药水治疗两处静默失败均由此起）
 - **TileSet 碰撞坐标**：碰撞多边形坐标相对于 tile 中心（而非左上角），16×16 tile 应为 `PackedVector2Array(-8,-8, 8,-8, 8,8, -8,8)`，详见 `doc/notes/tileset_collision_coordinates.md`
 - **2D 节点层叠**：想让节点画在"角色下面"勿用 `z_index = -1`——有效 z 会低于 TileMapLayer(0) 被地板完全遮挡；正确做法是同层树序（Shadow 节点放 Sprite2D 之前，z 保持默认）
 - 无头 `-s` 脚本里 `add_child()` 后 `_ready()` **不会立即触发**（消息队列未刷新即 `quit()`）——测试要直接调 `generate()` 等方法，勿依赖 `_ready`

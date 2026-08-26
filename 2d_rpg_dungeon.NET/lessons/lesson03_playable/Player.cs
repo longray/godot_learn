@@ -369,9 +369,11 @@ public partial class Player : CharacterBody2D
 
 		hitbox.BodyEntered += body =>
 		{
-			if (body.HasMethod("take_damage"))
+			// 踩坑：C# 方法对引擎暴露为 PascalCase 原名（HasMethod("take_damage")
+			// 永远 false）——跨语言动态调用必须强类型 is 转换
+			if (body is Enemy enemy)
 			{
-				body.Call("take_damage", AttackDamage, GlobalPosition);
+				enemy.TakeDamage(AttackDamage, GlobalPosition);
 			}
 		};
 

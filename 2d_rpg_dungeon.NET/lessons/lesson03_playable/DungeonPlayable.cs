@@ -1513,9 +1513,10 @@ public partial class DungeonPlayable : Node2D
 			}
 			else if (dropType == "potion")
 			{
-				if (body.HasMethod("heal"))
+				// 踩坑：同攻击命中——C# 方法 PascalCase，强类型调用而非 HasMethod("heal")
+				if (body is Player p)
 				{
-					body.Call("heal", 1);
+					p.Heal(1);
 				}
 				GD.Print("捡到药水并恢复生命。");
 			}
