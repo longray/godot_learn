@@ -91,9 +91,12 @@ public partial class Enemy : CharacterBody2D
 	public Vector2 LastKnownPlayerPosition { get; set; }
 	private float _timeSinceSeen;
 
-	// 卡住检测（进展版）：0.x 秒内位移不足 2px = 无进展（含顶墙滑/完全静止）
+	// 卡住检测（双通道）：停滞累积 + 每秒净位移健康检查
+	// （顶墙滑 velocity≠0、蠕动每 0.8s 挪 2.1px 骗过单阈值——全覆盖）
 	private float _stuckTime;
 	private Vector2 _lastProgressPos;
+	private float _progressCheckT;
+	private Vector2 _progressCheckPos;
 
 	private Vector2 _homePosition;
 	private float _chaseSpeed;
@@ -246,6 +249,8 @@ public partial class Enemy : CharacterBody2D
 		_timeSinceSeen = 0.0f;
 		_stuckTime = 0.0f;
 		_lastProgressPos = GlobalPosition;
+		_progressCheckT = 0.0f;
+		_progressCheckPos = GlobalPosition;
 
 		if (PatrolPoints.Length == 0)
 		{
@@ -604,7 +609,7 @@ public partial class Enemy : CharacterBody2D
 	}
 
 	// =========================
-	// 返回（第 7 课：先去最后所见位置搜索 → 再回最近巡逻点）
+	// 返回（第 7 课修复：AStar 寻路回家——直线回程隔墙必卡）
 	// =========================
 
 	private void ProcessReturn(float dt)
@@ -625,7 +630,26 @@ public partial class Enemy : CharacterBody2D
 			target = PatrolPoints.Length > 0 ? PatrolPoints[targetIndex] : _homePosition;
 		}
 
-		bool arrived = MoveTowards(target, Speed, dt);
+		// AStar 路径重算（0.3s 节流；阶段切换时目标变了自然重算）
+		_repathTimer -= dt;
+		if (_repathTimer <= 0.0f)
+		{
+			RepathTo(target);
+		}
+
+		Vector2 moveTarget = target;
+		if (_pathWorld.Count > 0)
+		{
+			moveTarget = _pathWorld[0];
+
+			if (GlobalPosition.DistanceTo(moveTarget) <= ArrivalDistance)
+			{
+				_pathWorld.RemoveAt(0);
+				moveTarget = _pathWorld.Count > 0 ? _pathWorld[0] : target;
+			}
+		}
+
+		bool arrived = MoveTowards(moveTarget, Speed, dt);
 		UpdateStuck(dt);
 
 		if (arrived)
@@ -645,8 +669,12 @@ public partial class Enemy : CharacterBody2D
 		}
 		else if (_stuckTime > 0.8f)
 		{
-			// 无进展超 0.8s（含贴墙滑到不可达点）：强制回巡逻
+			// 终极保底：AStar 仍卡死（极罕见）→ 瞬移回巡逻点，永不永久卡死
+			int idx = GetClosestPatrolPointIndex();
+			GlobalPosition = PatrolPoints.Length > 0 ? PatrolPoints[idx] : _homePosition;
 			State = EnemyState.Patrol;
+			_currentPointIndex = idx;
+			_isWaiting = false;
 			_stuckTime = 0.0f;
 		}
 
@@ -678,19 +706,35 @@ public partial class Enemy : CharacterBody2D
 	}
 
 	// =========================
-	// 卡住检测：0.x 秒内位移不足 2px = 无进展（含顶墙滑/完全静止）
+	// 卡住检测：停滞累积 + 每秒净位移健康检查（顶墙滑/蠕动/静止全覆盖）
 	// =========================
 
 	private void UpdateStuck(float dt)
 	{
+		// 通道 1：即时停滞（<2px 累积计时）
 		if (GlobalPosition.DistanceTo(_lastProgressPos) < 2.0f)
 		{
 			_stuckTime += dt;
 		}
 		else
 		{
-			_stuckTime = 0.0f;
 			_lastProgressPos = GlobalPosition;
+		}
+
+		// 通道 2：每 1s 净位移检查——蠕动（有微位移但无净进展）也会被识别
+		_progressCheckT += dt;
+		if (_progressCheckT >= 1.0f)
+		{
+			if (GlobalPosition.DistanceTo(_progressCheckPos) >= 6.0f)
+			{
+				_stuckTime = 0.0f;  // 每秒有净进展 → 健康
+			}
+			else
+			{
+				_stuckTime += 1.0f;  // 蠕动 → 直接顶过阈值
+			}
+			_progressCheckT = 0.0f;
+			_progressCheckPos = GlobalPosition;
 		}
 	}
 
