@@ -1,0 +1,94 @@
+[gd_scene format=3 uid="uid://bhud8k4l2w0q8"]
+
+[ext_resource type="Script" path="res://lessons/lesson03_playable/Hud.cs" id="1_hud"]
+[ext_resource type="Texture2D" path="res://assets/sprites/heart_full.png" id="2_heart_full"]
+[ext_resource type="Texture2D" path="res://assets/sprites/heart_empty.png" id="3_heart_empty"]
+[ext_resource type="Texture2D" path="res://assets/sprites/gold.png" id="4_gold"]
+[ext_resource type="Texture2D" path="res://assets/sprites/key.png" id="5_key"]
+
+[node name="HUD" type="CanvasLayer"]
+script = ExtResource("1_hud")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 260.0
+offset_bottom = 200.0
+theme_override_constants/separation = 6.0
+
+[node name="HealthUI" type="HBoxContainer" parent="VBoxContainer"]
+theme_override_constants/separation = 4.0
+
+[node name="Heart1" type="TextureRect" parent="VBoxContainer/HealthUI"]
+offset_right = 16.0
+offset_bottom = 16.0
+texture = ExtResource("2_heart_full")
+
+[node name="Heart2" type="TextureRect" parent="VBoxContainer/HealthUI"]
+offset_right = 16.0
+offset_bottom = 16.0
+texture = ExtResource("2_heart_full")
+
+[node name="Heart3" type="TextureRect" parent="VBoxContainer/HealthUI"]
+offset_right = 16.0
+offset_bottom = 16.0
+texture = ExtResource("2_heart_full")
+
+[node name="GoldRow" type="HBoxContainer" parent="VBoxContainer"]
+theme_override_constants/separation = 6.0
+
+[node name="GoldIcon" type="TextureRect" parent="VBoxContainer/GoldRow"]
+offset_right = 16.0
+offset_bottom = 16.0
+size_flags_vertical = 4
+texture = ExtResource("4_gold")
+
+[node name="GoldLabel" type="Label" parent="VBoxContainer/GoldRow"]
+theme_override_font_sizes/font_size = 18
+text = "× 0"
+
+[node name="KeyRow" type="HBoxContainer" parent="VBoxContainer"]
+theme_override_constants/separation = 6.0
+
+[node name="KeyIcon" type="TextureRect" parent="VBoxContainer/KeyRow"]
+offset_right = 16.0
+offset_bottom = 16.0
+size_flags_vertical = 4
+texture = ExtResource("5_key")
+
+[node name="KeyLabel" type="Label" parent="VBoxContainer/KeyRow"]
+theme_override_font_sizes/font_size = 18
+text = "未获得"
+
+[node name="FloorLabel" type="Label" parent="VBoxContainer"]
+theme_override_font_sizes/font_size = 18
+text = "层数：第 1 层"
+
+[node name="TreasureLabel" type="Label" parent="VBoxContainer"]
+theme_override_font_sizes/font_size = 18
+text = "宝箱：0/0"
+
+[node name="HurtOverlay" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(1, 0, 0, 0)
+
+[node name="DeathLabel" type="Label" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -50.0
+offset_right = 200.0
+offset_bottom = 50.0
+theme_override_font_sizes/font_size = 56
+theme_override_colors/font_color = Color(1, 0.3, 0.3, 1)
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "你死了"
+mouse_filter = 2
+visible = false

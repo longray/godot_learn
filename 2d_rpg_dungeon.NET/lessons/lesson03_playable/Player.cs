@@ -9,6 +9,18 @@ namespace RpgDungeon;
 // =========================
 public partial class Player : CharacterBody2D
 {
+	// 第 8 课：生命变化信号（受伤/治疗/重置/死亡时发射，Main 接收后转发 HUD）
+	[Signal]
+	public delegate void HealthChangedEventHandler(int currentHealth, int maxHealth);
+
+	// 作业 4/5（第 8 课）：事件信号——与 HealthChanged（状态量）互补的"瞬间事件"。
+	// HealthChanged 治疗也会发，无法区分"掉血"和"回血"；红屏/死亡提示只在真事件发生时闪
+	[Signal]
+	public delegate void DamagedEventHandler(int amount);
+
+	[Signal]
+	public delegate void DiedEventHandler();
+
 	[Export] public float Speed { get; set; } = 140.0f;
 
 	// 作业 5：移动阻挡方式开关（运行时对比手感用）
@@ -75,6 +87,9 @@ public partial class Player : CharacterBody2D
 		_sprite = GetNode<Sprite2D>("Sprite2D");
 		_camera = GetNode<Camera2D>("Camera2D");
 		Health = MaxHealth;
+
+		// 第 8 课：初始生命广播（Main 连接后 HUD 显示满心）
+		EmitSignal(SignalName.HealthChanged, Health, MaxHealth);
 	}
 
 	public void ResetForNewLayer()
@@ -84,7 +99,7 @@ public partial class Player : CharacterBody2D
 		Knockback = Vector2.Zero;
 		Modulate = new Color(Modulate.R, Modulate.G, Modulate.B, 1.0f);
 
-		NotifyHealthUi();
+		EmitSignal(SignalName.HealthChanged, Health, MaxHealth);
 	}
 
 	public override void _UnhandledInput(InputEvent @event)
@@ -249,7 +264,8 @@ public partial class Player : CharacterBody2D
 
 		GD.Print("玩家受伤，剩余生命：", Health);
 
-		NotifyHealthUi();
+		EmitSignal(SignalName.HealthChanged, Health, MaxHealth);
+		EmitSignal(SignalName.Damaged, amount); // 作业 4：红屏闪烁（喝药水不发此信号）
 
 		if (Health <= 0)
 		{
@@ -265,10 +281,12 @@ public partial class Player : CharacterBody2D
 	{
 		GD.Print("玩家死亡，回到入口。");
 
+		EmitSignal(SignalName.Died); // 作业 5：HUD 大字提示
+
 		Health = MaxHealth;
 		Knockback = Vector2.Zero;
 
-		NotifyHealthUi();
+		EmitSignal(SignalName.HealthChanged, Health, MaxHealth);
 
 		// 作业 5（第 5 课）：死亡重置本层；无此方法时回退轻惩罚
 		if (Dungeon != null)
@@ -303,11 +321,6 @@ public partial class Player : CharacterBody2D
 		}
 	}
 
-	private void NotifyHealthUi()
-	{
-		Dungeon?.UpdateHealthUi(Health, MaxHealth);
-	}
-
 	// =========================
 	// 第 6 课：攻击与治疗
 	// =========================
@@ -317,7 +330,7 @@ public partial class Player : CharacterBody2D
 		Health = Mathf.Min(MaxHealth, Health + amount);
 		GD.Print("恢复生命，当前生命：", Health);
 
-		NotifyHealthUi();
+		EmitSignal(SignalName.HealthChanged, Health, MaxHealth);
 	}
 
 	private void Attack()

@@ -1,12 +1,11 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://lessons/lesson03_playable/DungeonPlayable.cs" id="1_main"]
 [ext_resource type="TileSet" path="res://assets/tiles/dungeon_tiles.tres" id="2_tiles"]
 [ext_resource type="PackedScene" path="res://lessons/lesson03_playable/player.tscn" id="3_player"]
 [ext_resource type="Script" path="res://lessons/lesson03_playable/PathOverlay.cs" id="4_overlay"]
 [ext_resource type="PackedScene" path="res://lessons/lesson03_playable/enemy.tscn" id="5_enemy"]
-[ext_resource type="Texture2D" path="res://assets/sprites/heart_full.png" id="6_heart_full"]
-[ext_resource type="Texture2D" path="res://assets/sprites/heart_empty.png" id="7_heart_empty"]
+[ext_resource type="PackedScene" path="res://lessons/lesson03_playable/hud.tscn" id="6_hud"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
@@ -20,50 +19,4 @@ tile_set = ExtResource("2_tiles")
 [node name="PathOverlay" type="Node2D" parent="."]
 script = ExtResource("4_overlay")
 
-[node name="HUD" type="CanvasLayer" parent="."]
-
-[node name="KeyLabel" type="Label" parent="HUD"]
-offset_left = 12.0
-offset_top = 12.0
-offset_right = 500.0
-offset_bottom = 44.0
-theme_override_font_sizes/font_size = 18
-text = "钥匙：未获得"
-
-[node name="TreasureLabel" type="Label" parent="HUD"]
-offset_left = 12.0
-offset_top = 44.0
-offset_right = 500.0
-offset_bottom = 76.0
-theme_override_font_sizes/font_size = 18
-text = "宝箱：0/0"
-
-[node name="GoldLabel" type="Label" parent="HUD"]
-offset_left = 12.0
-offset_top = 76.0
-offset_right = 500.0
-offset_bottom = 108.0
-theme_override_font_sizes/font_size = 18
-text = "金币：0"
-
-[node name="HealthUI" type="HBoxContainer" parent="HUD"]
-offset_left = 440.0
-offset_top = 12.0
-offset_right = 500.0
-offset_bottom = 44.0
-theme_override_constants/separation = 4
-
-[node name="Heart1" type="TextureRect" parent="HUD/HealthUI"]
-offset_right = 16.0
-offset_bottom = 16.0
-texture = ExtResource("6_heart_full")
-
-[node name="Heart2" type="TextureRect" parent="HUD/HealthUI"]
-offset_right = 16.0
-offset_bottom = 16.0
-texture = ExtResource("6_heart_full")
-
-[node name="Heart3" type="TextureRect" parent="HUD/HealthUI"]
-offset_right = 16.0
-offset_bottom = 16.0
-texture = ExtResource("6_heart_full")
+[node name="HUD" parent="." instance=ExtResource("6_hud")]

@@ -113,6 +113,9 @@ public partial class DungeonPlayable : Node2D
 	public bool HasKey { get; private set; }
 	public int TreasureCount { get; private set; }
 
+	// 第 8 课：层数（出口进入下一层 +1；金币跨层保留，钥匙/宝箱/生命每层重置）
+	public int FloorNumber { get; private set; } = 1;
+
 	// ---------- 节点 ----------
 
 	private TileMapLayer _tileLayer;
@@ -120,17 +123,8 @@ public partial class DungeonPlayable : Node2D
 	// 作业 3：路径可视化覆盖层（画在 TileMapLayer 之上）
 	private PathOverlay _pathOverlay;
 
-	// HUD 引用（场景里的 CanvasLayer > Label）
-	private Label _keyLabel;
-	private Label _treasureLabel;
-	private Label _goldLabel;
-	private HBoxContainer _healthUi;
-
-	// 作业 1（第 5 课）：心形图标纹理
-	private static readonly Texture2D HeartFullTexture =
-		GD.Load<Texture2D>("res://assets/sprites/heart_full.png");
-	private static readonly Texture2D HeartEmptyTexture =
-		GD.Load<Texture2D>("res://assets/sprites/heart_empty.png");
+	// 第 8 课：独立 HUD 场景实例（hud.tscn）——显示逻辑全部下沉到它，Main 只推送数据
+	private Hud _hud;
 
 	// 像素素材（assets/sprites/generate_sprites.ps1 生成，16x16 透明背景）
 	private static readonly Texture2D KeyTexture =
@@ -190,10 +184,7 @@ public partial class DungeonPlayable : Node2D
 	{
 		_tileLayer = GetNode<TileMapLayer>("TileMapLayer");
 		_pathOverlay = GetNodeOrNull<PathOverlay>("PathOverlay");
-		_keyLabel = GetNodeOrNull<Label>("HUD/KeyLabel");
-		_treasureLabel = GetNodeOrNull<Label>("HUD/TreasureLabel");
-		_goldLabel = GetNodeOrNull<Label>("HUD/GoldLabel");
-		_healthUi = GetNodeOrNull<HBoxContainer>("HUD/HealthUI");
+		_hud = GetNodeOrNull<Hud>("HUD");
 
 		if (_tileLayer == null)
 		{
@@ -862,6 +853,8 @@ public partial class DungeonPlayable : Node2D
 		if (HasKey)
 		{
 			GD.Print("使用钥匙，进入下一层。");
+			// 第 8 课：层数 +1（金币跨层保留；钥匙/宝箱/生命由 Generate 内部重置）
+			FloorNumber++;
 			// 物理回调中不能直接改场景树，延迟到帧末安全执行
 			CallDeferred(MethodName.Generate);
 		}
@@ -1538,11 +1531,7 @@ public partial class DungeonPlayable : Node2D
 	private void UpdateGoldHud()
 	{
 		// 作业 5（第 6 课）：金币计数（跨层保留，只在拾取时刷新）
-		if (_goldLabel != null)
-		{
-			_goldLabel.Text = $"金币：{GoldCount}";
-			_goldLabel.AddThemeColorOverride("font_color", new Color(1.0f, 0.85f, 0.3f));
-		}
+		_hud?.UpdateGold(GoldCount);
 	}
 
 	// =========================
@@ -1551,34 +1540,24 @@ public partial class DungeonPlayable : Node2D
 
 	private void UpdateHud(bool lockedHint = false)
 	{
-		// 作业 1：钥匙状态行
-		if (_keyLabel == null)
+		// 第 8 课：转发到独立 HUD（hud.tscn 实例）——Main 不再直接持有 Label
+		if (_hud == null)
 		{
 			return;
 		}
 
-		if (HasKey)
+		if (lockedHint)
 		{
-			_keyLabel.Text = "钥匙：已获得 ✓ 出口已解锁";
-			_keyLabel.AddThemeColorOverride("font_color", new Color(0.5f, 1.0f, 0.6f));
-		}
-		else if (lockedHint)
-		{
-			_keyLabel.Text = "出口被锁住了！去寻找金钥匙…";
-			_keyLabel.AddThemeColorOverride("font_color", new Color(1.0f, 0.5f, 0.4f));
+			_hud.ShowKeyLockedHint();
 		}
 		else
 		{
-			_keyLabel.Text = "钥匙：未获得（找金钥匙）";
-			_keyLabel.AddThemeColorOverride("font_color", new Color(1.0f, 1.0f, 1.0f));
+			_hud.UpdateKey(HasKey);
 		}
 
-		// 作业 1：宝箱计数行（已开 / 总数；宝箱拾取后不回收格子，总数稳定）
-		if (_treasureLabel != null)
-		{
-			_treasureLabel.Text = $"宝箱：{TreasureCount}/{TreasureCells.Count}";
-			_treasureLabel.AddThemeColorOverride("font_color", new Color(1.0f, 0.85f, 0.4f));
-		}
+		// 宝箱行无条件刷新（旧版嵌在 else 分支里，已获得钥匙时宝箱数不更新——顺手修正）
+		_hud.UpdateTreasure(TreasureCount, TreasureCells.Count);
+		_hud.UpdateFloor(FloorNumber);
 	}
 
 	// =========================
@@ -1609,6 +1588,15 @@ public partial class DungeonPlayable : Node2D
 
 		_playerInstance.GlobalPosition = GetEntranceWorldPosition();
 		_playerInstance.Dungeon = this;
+
+		// 第 8 课：连接玩家生命信号（实例重建时是全新对象，天然不会重复订阅；
+		// 先 -= 再 += 兜底同一实例重复进入本函数的路径）
+		_playerInstance.HealthChanged -= OnPlayerHealthChanged;
+		_playerInstance.HealthChanged += OnPlayerHealthChanged;
+		_playerInstance.Damaged -= OnPlayerDamaged;
+		_playerInstance.Damaged += OnPlayerDamaged;
+		_playerInstance.Died -= OnPlayerDied;
+		_playerInstance.Died += OnPlayerDied;
 
 		// 第 5 课（5.7）：每层重置玩家生命/无敌/击退状态
 		_playerInstance.ResetForNewLayer();
@@ -1817,21 +1805,23 @@ public partial class DungeonPlayable : Node2D
 		Generate();
 	}
 
-	public void UpdateHealthUi(int current, int maxValue)
+	private void OnPlayerHealthChanged(int currentHealth, int maxHealth)
 	{
-		// 作业 1（第 5 课）：按当前生命点亮/熄灭心形
-		if (_healthUi == null)
-		{
-			return;
-		}
+		// 第 8 课：接收玩家 HealthChanged 信号 → 转发 HUD 刷新心形
+		// （替代第 5 课的 player 直调 Dungeon.UpdateHealthUi——信号解耦，双向不认识对方）
+		_hud?.UpdateHealth(currentHealth, maxHealth);
+	}
 
-		for (int i = 0; i < _healthUi.GetChildCount(); i++)
-		{
-			if (_healthUi.GetChildOrNull<TextureRect>(i) is { } heart)
-			{
-				heart.Texture = i < current ? HeartFullTexture : HeartEmptyTexture;
-			}
-		}
+	private void OnPlayerDamaged(int amount)
+	{
+		// 作业 4（第 8 课）：受伤 → HUD 红屏闪烁
+		_hud?.FlashHurt();
+	}
+
+	private void OnPlayerDied()
+	{
+		// 作业 5（第 8 课）：死亡 → HUD 大字提示
+		_hud?.ShowDeath();
 	}
 
 	public bool IsWorldPositionWalkable(Vector2 worldPosition, float radius = 0.0f)
