@@ -3,6 +3,8 @@
 [ext_resource type="Script" path="res://lessons/lesson03_playable/hud.gd" id="1_hud"]
 [ext_resource type="Texture2D" path="res://assets/sprites/heart_full.png" id="2_heart_full"]
 [ext_resource type="Texture2D" path="res://assets/sprites/heart_empty.png" id="3_heart_empty"]
+[ext_resource type="Texture2D" path="res://assets/sprites/gold.png" id="4_gold"]
+[ext_resource type="Texture2D" path="res://assets/sprites/key.png" id="5_key"]
 
 [node name="HUD" type="CanvasLayer"]
 script = ExtResource("1_hud")
@@ -32,13 +34,31 @@ offset_right = 16.0
 offset_bottom = 16.0
 texture = ExtResource("2_heart_full")
 
-[node name="GoldLabel" type="Label" parent="VBoxContainer"]
-theme_override_font_sizes/font_size = 18
-text = "金币：0"
+[node name="GoldRow" type="HBoxContainer" parent="VBoxContainer"]
+theme_override_constants/separation = 6.0
 
-[node name="KeyLabel" type="Label" parent="VBoxContainer"]
+[node name="GoldIcon" type="TextureRect" parent="VBoxContainer/GoldRow"]
+offset_right = 16.0
+offset_bottom = 16.0
+size_flags_vertical = 4
+texture = ExtResource("4_gold")
+
+[node name="GoldLabel" type="Label" parent="VBoxContainer/GoldRow"]
 theme_override_font_sizes/font_size = 18
-text = "钥匙：未获得"
+text = "× 0"
+
+[node name="KeyRow" type="HBoxContainer" parent="VBoxContainer"]
+theme_override_constants/separation = 6.0
+
+[node name="KeyIcon" type="TextureRect" parent="VBoxContainer/KeyRow"]
+offset_right = 16.0
+offset_bottom = 16.0
+size_flags_vertical = 4
+texture = ExtResource("5_key")
+
+[node name="KeyLabel" type="Label" parent="VBoxContainer/KeyRow"]
+theme_override_font_sizes/font_size = 18
+text = "未获得"
 
 [node name="FloorLabel" type="Label" parent="VBoxContainer"]
 theme_override_font_sizes/font_size = 18

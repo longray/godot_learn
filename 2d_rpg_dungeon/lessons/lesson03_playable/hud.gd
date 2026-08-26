@@ -7,10 +7,13 @@ extends CanvasLayer
 # =========================
 
 @onready var health_ui: HBoxContainer = $VBoxContainer/HealthUI
-@onready var gold_label: Label = $VBoxContainer/GoldLabel
-@onready var key_label: Label = $VBoxContainer/KeyLabel
+@onready var gold_label: Label = $VBoxContainer/GoldRow/GoldLabel
+@onready var key_label: Label = $VBoxContainer/KeyRow/KeyLabel
 @onready var floor_label: Label = $VBoxContainer/FloorLabel
 @onready var treasure_label: Label = $VBoxContainer/TreasureLabel
+
+# 作业 2/3（第 8 课）：钥匙/金币图标（TextureRect 显示像素素材，替代纯文字前缀）
+@onready var key_icon: TextureRect = $VBoxContainer/KeyRow/KeyIcon
 
 # 作业 4/5（第 8 课）：受伤红屏覆盖层 + 死亡大字
 @onready var hurt_overlay: ColorRect = $HurtOverlay
@@ -44,16 +47,20 @@ func update_health(current_health: int, max_health: int) -> void:
 
 
 func update_gold(gold: int) -> void:
-	gold_label.text = "金币：%d" % gold
+	# 作业 3（第 8 课）：金币图标已在行首，文字只留数量
+	gold_label.text = "× %d" % gold
 	gold_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
 
 
 func update_key(has_key: bool) -> void:
+	# 作业 2（第 8 课）：钥匙图标随状态点亮/灰暗——图标即语义，文字只留状态
+	key_icon.modulate = Color(1.0, 1.0, 1.0) if has_key else Color(0.35, 0.35, 0.4)
+
 	if has_key:
-		key_label.text = "钥匙：已获得 ✓ 出口已解锁"
+		key_label.text = "已获得 ✓ 出口已解锁"
 		key_label.add_theme_color_override("font_color", Color(0.5, 1.0, 0.6))
 	else:
-		key_label.text = "钥匙：未获得（找金钥匙）"
+		key_label.text = "未获得"
 		key_label.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0))
 
 
