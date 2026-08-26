@@ -91,12 +91,13 @@ public partial class Enemy : CharacterBody2D
 	public Vector2 LastKnownPlayerPosition { get; set; }
 	private float _timeSinceSeen;
 
-	// 卡住检测（双通道）：停滞累积 + 每秒净位移健康检查
-	// （顶墙滑 velocity≠0、蠕动每 0.8s 挪 2.1px 骗过单阈值——全覆盖）
+	// 卡住检测（三通道）：停滞累积 + 每秒净位移 + 每秒目标接近量
+	// （顶墙滑 velocity≠0、蠕动、贴墙绕圈——距目标永不减小——全覆盖）
 	private float _stuckTime;
 	private Vector2 _lastProgressPos;
 	private float _progressCheckT;
 	private Vector2 _progressCheckPos;
+	private float _targetCheckD = -1.0f;
 
 	private Vector2 _homePosition;
 	private float _chaseSpeed;
@@ -107,6 +108,11 @@ public partial class Enemy : CharacterBody2D
 	// 作业 4：AStar 追击——0.3s 重算路径，沿路点绕墙
 	private readonly List<Vector2> _pathWorld = new();
 	private float _repathTimer;
+
+	// 追击足迹（面包屑）：CHASE 记录走过的格子，RETURN 原路回溯——
+	// 来时的路必然通，比 AStar 更符合"原路返回"直觉且零卡死
+	private readonly List<Vector2I> _breadcrumb = new();
+	private const int BreadcrumbMax = 512;
 
 	// 作业 3：警报叹号剩余显示时间
 	private float _alertT;
@@ -451,12 +457,26 @@ public partial class Enemy : CharacterBody2D
 		_timeSinceSeen = 0.0f;
 		LastKnownPlayerPosition = targetPlayer.GlobalPosition;
 
+		// 面包屑：新一轮追击重新记录足迹（起点入栈）
+		_breadcrumb.Clear();
+		_breadcrumb.Add(CurrentCell());
+
 		// 作业 3：发现玩家！头顶警报 0.3s
 		_alertT = 0.3f;
 		if (_alert != null)
 		{
 			_alert.Visible = true;
 		}
+	}
+
+	private Vector2I CurrentCell()
+	{
+		if (Dungeon is DungeonPlayable dungeon && dungeon.TileLayer != null)
+		{
+			var tl = dungeon.TileLayer;
+			return tl.LocalToMap(tl.ToLocal(GlobalPosition));
+		}
+		return new Vector2I(-1, -1);
 	}
 
 	// =========================
@@ -585,7 +605,26 @@ public partial class Enemy : CharacterBody2D
 		}
 
 		bool arrived = MoveTowards(target, _chaseSpeed, dt);
-		UpdateStuck(dt);
+		UpdateStuck(dt, target);
+
+		// 面包屑：进入新格子记录；去环——浅层重复截断（防绕圈追击重复入栈）
+		Vector2I cell = CurrentCell();
+		if (cell != _breadcrumb[^1] && cell.X >= 0)
+		{
+			int loopAt = _breadcrumb.LastIndexOf(cell);
+			if (loopAt >= 0 && _breadcrumb.Count - loopAt <= 8)
+			{
+				_breadcrumb.RemoveRange(loopAt + 1, _breadcrumb.Count - loopAt - 1);
+			}
+			else
+			{
+				_breadcrumb.Add(cell);
+				if (_breadcrumb.Count > BreadcrumbMax)
+				{
+					_breadcrumb.RemoveAt(0);
+				}
+			}
+		}
 
 		if (arrived)
 		{
@@ -609,12 +648,14 @@ public partial class Enemy : CharacterBody2D
 	}
 
 	// =========================
-	// 返回（第 7 课修复：AStar 寻路回家——直线回程隔墙必卡）
+	// 返回（第 7 课定稿：面包屑原路回溯优先，AStar 兜底）
+	// 踩坑：固定目标下沿用 CHASE 的 0.3s 高频重算会引发起点振荡
+	//       （每次重算首点可能在身后 → 来回走）——改为路径空才重算
 	// =========================
 
 	private void ProcessReturn(float dt)
 	{
-		// 阶段 1：还没到过最后所见位置 → 先去搜一圈
+		// 阶段 1：还没到过最后所见位置 → 先去搜一圈（近距，AStar 一次算好）
 		Vector2 target;
 		bool searching = false;
 
@@ -623,62 +664,98 @@ public partial class Enemy : CharacterBody2D
 			target = LastKnownPlayerPosition;
 			searching = true;
 		}
+		else if (_breadcrumb.Count > 0)
+		{
+			// 阶段 2a：有足迹 → 原路回溯（来时的路必然通）
+			target = BreadcrumbWorld(_breadcrumb[^1]);
+		}
+		else if (PatrolPoints.Length > 0)
+		{
+			// 阶段 2b：无足迹 → AStar 回最近巡逻点
+			target = PatrolPoints[GetClosestPatrolPointIndex()];
+		}
 		else
 		{
-			// 阶段 2：搜索过了 → 回最近巡逻点
-			int targetIndex = GetClosestPatrolPointIndex();
-			target = PatrolPoints.Length > 0 ? PatrolPoints[targetIndex] : _homePosition;
-		}
-
-		// AStar 路径重算（0.3s 节流；阶段切换时目标变了自然重算）
-		_repathTimer -= dt;
-		if (_repathTimer <= 0.0f)
-		{
-			RepathTo(target);
+			target = _homePosition;
 		}
 
 		Vector2 moveTarget = target;
-		if (_pathWorld.Count > 0)
-		{
-			moveTarget = _pathWorld[0];
 
-			if (GlobalPosition.DistanceTo(moveTarget) <= ArrivalDistance)
+		if (searching || _breadcrumb.Count == 0)
+		{
+			// AStar 模式：路径空才重算（固定目标高频重算会振荡）
+			if (_pathWorld.Count == 0)
 			{
-				_pathWorld.RemoveAt(0);
-				moveTarget = _pathWorld.Count > 0 ? _pathWorld[0] : target;
+				RepathTo(target);
+			}
+
+			if (_pathWorld.Count > 0)
+			{
+				moveTarget = _pathWorld[0];
+
+				if (GlobalPosition.DistanceTo(moveTarget) <= ArrivalDistance)
+				{
+					_pathWorld.RemoveAt(0);
+					moveTarget = _pathWorld.Count > 0 ? _pathWorld[0] : target;
+				}
 			}
 		}
 
 		bool arrived = MoveTowards(moveTarget, Speed, dt);
-		UpdateStuck(dt);
+		UpdateStuck(dt, moveTarget);
 
 		if (arrived)
 		{
 			if (searching)
 			{
-				// 搜完没发现 → 标记搜索完成，继续走回家
+				// 搜完没发现 → 标记搜索完成，走回家
 				LastKnownPlayerPosition = GlobalPosition;
+			}
+			else if (_breadcrumb.Count > 0)
+			{
+				// 回溯到达一格：弹出继续下一格
+				_breadcrumb.RemoveAt(_breadcrumb.Count - 1);
 			}
 			else
 			{
-				State = EnemyState.Patrol;
-				_currentPointIndex = GetClosestPatrolPointIndex();
-				_isWaiting = false;
-				_stuckTime = 0.0f;
+				ReturnComplete();
 			}
 		}
-		else if (_stuckTime > 0.8f)
+
+		if (_stuckTime > 1.0f)
 		{
-			// 终极保底：AStar 仍卡死（极罕见）→ 瞬移回巡逻点，永不永久卡死
-			int idx = GetClosestPatrolPointIndex();
-			GlobalPosition = PatrolPoints.Length > 0 ? PatrolPoints[idx] : _homePosition;
-			State = EnemyState.Patrol;
-			_currentPointIndex = idx;
-			_isWaiting = false;
-			_stuckTime = 0.0f;
+			if (_breadcrumb.Count > 0)
+			{
+				// 面包屑走不通（理论不会，防御）：清空换 AStar
+				_breadcrumb.Clear();
+				_stuckTime = 0.0f;
+			}
+			else if (_stuckTime > 2.0f)
+			{
+				// 终极保底：瞬移回巡逻点（正常游戏几乎不触发）
+				int idx = GetClosestPatrolPointIndex();
+				GlobalPosition = PatrolPoints.Length > 0 ? PatrolPoints[idx] : _homePosition;
+				ReturnComplete();
+			}
 		}
 
 		MoveAndSlide();
+	}
+
+	private Vector2 BreadcrumbWorld(Vector2I cell)
+	{
+		var tl = (Dungeon as DungeonPlayable)?.TileLayer;
+		return tl != null ? tl.ToGlobal(tl.MapToLocal(cell)) : GlobalPosition;
+	}
+
+	private void ReturnComplete()
+	{
+		State = EnemyState.Patrol;
+		_currentPointIndex = GetClosestPatrolPointIndex();
+		_isWaiting = false;
+		_stuckTime = 0.0f;
+		_breadcrumb.Clear();
+		_pathWorld.Clear();
 	}
 
 	private int GetClosestPatrolPointIndex()
@@ -706,12 +783,12 @@ public partial class Enemy : CharacterBody2D
 	}
 
 	// =========================
-	// 卡住检测：停滞累积 + 每秒净位移健康检查（顶墙滑/蠕动/静止全覆盖）
+	// 卡住检测（三通道）：停滞 / 净位移 / 目标接近量（抓贴墙绕圈）
 	// =========================
 
-	private void UpdateStuck(float dt)
+	private void UpdateStuck(float dt, Vector2 target)
 	{
-		// 通道 1：即时停滞（<2px 累积计时）
+		// 通道 1：即时停滞
 		if (GlobalPosition.DistanceTo(_lastProgressPos) < 2.0f)
 		{
 			_stuckTime += dt;
@@ -721,20 +798,26 @@ public partial class Enemy : CharacterBody2D
 			_lastProgressPos = GlobalPosition;
 		}
 
-		// 通道 2：每 1s 净位移检查——蠕动（有微位移但无净进展）也会被识别
+		// 通道 2+3：每 1s 健康检查（净位移 + 目标接近量）
 		_progressCheckT += dt;
 		if (_progressCheckT >= 1.0f)
 		{
-			if (GlobalPosition.DistanceTo(_progressCheckPos) >= 6.0f)
+			float netMoved = GlobalPosition.DistanceTo(_progressCheckPos);
+			float targetD = GlobalPosition.DistanceTo(target);
+			float targetProgress = _targetCheckD - targetD;  // 正值=接近了
+
+			if (netMoved >= 6.0f && (targetProgress >= 6.0f || targetD < ArrivalDistance * 3.0f))
 			{
-				_stuckTime = 0.0f;  // 每秒有净进展 → 健康
+				_stuckTime = 0.0f;  // 在走且在接近目标（或已很近）→ 健康
 			}
 			else
 			{
-				_stuckTime += 1.0f;  // 蠕动 → 直接顶过阈值
+				_stuckTime += 1.0f;  // 停滞/蠕动/绕圈 → 顶格
 			}
+
 			_progressCheckT = 0.0f;
 			_progressCheckPos = GlobalPosition;
+			_targetCheckD = targetD;
 		}
 	}
 
