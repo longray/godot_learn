@@ -9,6 +9,7 @@ Godot 4.7 程序化 RPG 地图生成的**学习仓库**（git 仓库，已推送
 ```text
 doc/lession/          课程文档（用户逐课提供，先审核再执行）
 doc/notes/            技术笔记（具体实现细节，用 grep 搜索）
+doc/eli5/             ELI5 可视化讲解页（eli5 技能产物统一放此目录，勿散落根目录）
 2d_rpg_dungeon/       GDScript 项目（当前活跃，含 addons/godot_ai MCP 插件）
 2d_rpg_dungeon.NET/   C# 版（**每课完成后立即同步重写**，非等大课程结束）
 ```

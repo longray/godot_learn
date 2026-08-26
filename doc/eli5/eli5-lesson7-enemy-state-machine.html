@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ELI5: 敌人状态机</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  min-height: 100vh;
+  color: #fff;
+}
+.container { max-width: 960px; margin: 0 auto; padding: 40px 20px 80px; }
+
+/* ===== Hero ===== */
+.hero {
+  text-align: center;
+  padding: 60px 20px 40px;
+}
+.hero-icon {
+  font-size: 90px;
+  animation: bounce 2.5s ease-in-out infinite;
+  display: inline-block;
+}
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-18px); }
+}
+.hero h1 {
+  font-size: 56px;
+  margin: 20px 0 12px;
+  background: linear-gradient(90deg, #667eea, #f093fb, #ffd700);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.hero .subtitle {
+  font-size: 24px;
+  color: #a8b2d1;
+}
+
+/* ===== Cards ===== */
+.card {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 24px;
+  padding: 36px;
+  margin: 28px 0;
+  backdrop-filter: blur(10px);
+  will-change: transform;
+  transition: transform .3s, box-shadow .3s;
+}
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 60px rgba(102,126,234,0.25);
+}
+.card h2 {
+  font-size: 36px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* ===== 三状态 ===== */
+.states-row {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+.state-chip {
+  flex: 1;
+  min-width: 220px;
+  border-radius: 20px;
+  padding: 28px 22px;
+  text-align: center;
+  transition: transform .25s, filter .25s;
+  cursor: default;
+}
+.state-chip:hover { transform: scale(1.06); filter: brightness(1.15); }
+.state-chip .emoji { font-size: 60px; display: block; }
+.state-chip .name { font-size: 30px; font-weight: 800; margin: 10px 0 6px; }
+.state-chip .desc { font-size: 17px; opacity: .85; line-height: 1.5; }
+.chip-patrol { background: linear-gradient(135deg, #11998e, #38ef7d); }
+.chip-chase  { background: linear-gradient(135deg, #f5576c, #f093fb); }
+.chip-return { background: linear-gradient(135deg, #4facfe, #667eea); }
+
+/* ===== 状态机图 ===== */
+.fsm-svg-wrap {
+  background: rgba(0,0,0,0.25);
+  border-radius: 18px;
+  padding: 18px;
+  margin-top: 12px;
+}
+.fsm-svg-wrap svg { width: 100%; height: auto; display: block; }
+.svg-label { font-size: 15px; fill: #cfd8ff; }
+
+/* ===== 视线检测 ===== */
+.sight-demo {
+  background: rgba(0,0,0,0.3);
+  border-radius: 18px;
+  padding: 16px;
+  margin-top: 16px;
+}
+.legend {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  font-size: 16px;
+}
+.legend span::before {
+  content: '';
+  display: inline-block;
+  width: 14px; height: 14px;
+  border-radius: 4px;
+  margin-right: 8px;
+  vertical-align: -2px;
+}
+
+/* ===== 转换规则 ===== */
+.rule {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 16px;
+  padding: 16px 20px;
+  margin: 12px 0;
+  cursor: pointer;
+  transition: background .25s;
+}
+.rule:hover { background: rgba(255,255,255,0.12); }
+.rule .arrow-flow { font-size: 22px; font-weight: 700; white-space: nowrap; }
+.rule .why { font-size: 16px; color: #a8b2d1; margin-left: auto; text-align: right; }
+.badge {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* ===== Takeaway ===== */
+.takeaway {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 24px;
+  padding: 40px;
+  text-align: center;
+  margin-top: 36px;
+  box-shadow: 0 24px 70px rgba(118,75,162,0.45);
+}
+.takeaway .icon { font-size: 64px; }
+.takeaway p { font-size: 26px; font-weight: 700; margin-top: 12px; line-height: 1.6; }
+.takeaway .sub { font-size: 18px; font-weight: 400; opacity: .85; margin-top: 10px; }
+
+@media (max-width: 640px) {
+  .hero h1 { font-size: 38px; }
+  .card h2 { font-size: 26px; }
+  .card { padding: 24px; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="hero-icon">👾</div>
+    <h1>敌人状态机</h1>
+    <p class="subtitle">怪物的"大脑"——只有 3 个心情的保安</p>
+  </div>
+
+  <!-- 三状态 -->
+  <div class="card">
+    <h2>🎮 怪物只有 3 种心情</h2>
+    <div class="states-row">
+      <div class="state-chip chip-patrol">
+        <span class="emoji">🚶</span>
+        <div class="name">巡逻</div>
+        <div class="desc">在自己房间里溜达<br>走来走去很悠闲</div>
+      </div>
+      <div class="state-chip chip-chase">
+        <span class="emoji">😡</span>
+        <div class="name">追击</div>
+        <div class="desc">看到你了！<br>加速冲过来抓你</div>
+      </div>
+      <div class="state-chip chip-return">
+        <span class="emoji">🤔</span>
+        <div class="name">返回</div>
+        <div class="desc">人呢？……算了<br>回家继续上班</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 状态机图 -->
+  <div class="card">
+    <h2>🔄 心情怎么切换？</h2>
+    <div class="fsm-svg-wrap">
+      <svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="ar" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#8892d6"/>
+          </marker>
+        </defs>
+
+        <!-- PATROL node -->
+        <g>
+          <ellipse cx="120" cy="110" rx="95" ry="52" fill="#2bb673" opacity="0.9"/>
+          <text x="120" y="104" text-anchor="middle" font-size="24" font-weight="800" fill="#fff">🚶 巡逻</text>
+          <text x="120" y="130" text-anchor="middle" font-size="13" fill="#eafff3" class="svg-label">PATROL</text>
+        </g>
+
+        <!-- CHASE node -->
+        <g>
+          <ellipse cx="480" cy="60" rx="95" ry="52" fill="#f5576c" opacity="0.9"/>
+          <text x="480" y="54" text-anchor="middle" font-size="24" font-weight="800" fill="#fff">😡 追击</text>
+          <text x="480" y="80" text-anchor="middle" font-size="13" fill="#ffeef0" class="svg-label">CHASE</text>
+        </g>
+
+        <!-- RETURN node -->
+        <g>
+          <ellipse cx="480" cy="270" rx="95" ry="52" fill="#4f8ef7" opacity="0.9"/>
+          <text x="480" y="264" text-anchor="middle" font-size="24" font-weight="800" fill="#fff">🤔 返回</text>
+          <text x="480" y="290" text-anchor="middle" font-size="13" fill="#eef4ff" class="svg-label">RETURN</text>
+        </g>
+
+        <!-- PATROL -> CHASE -->
+        <path d="M 205 85 C 290 55, 330 50, 383 52" stroke="#8892d6" stroke-width="3" fill="none" marker-end="url(#ar)"/>
+        <text x="295" y="30" text-anchor="middle" font-size="15" fill="#ffd700" class="svg-label">👀 看到你</text>
+
+        <!-- CHASE -> RETURN -->
+        <path d="M 500 112 C 510 150, 505 190, 498 216" stroke="#8892d6" stroke-width="3" fill="none" marker-end="url(#ar)"/>
+        <text x="590" y="168" text-anchor="middle" font-size="15" fill="#ffd700" class="svg-label">🙅 跟丢了</text>
+
+        <!-- RETURN -> CHASE -->
+        <path d="M 420 240 C 330 190, 300 130, 290 95" stroke="#8892d6" stroke-width="3" fill="none" marker-end="url(#ar)"/>
+        <text x="315" y="180" text-anchor="middle" font-size="15" fill="#ffd700" class="svg-label">👀 又看到你</text>
+
+        <!-- RETURN -> PATROL -->
+        <path d="M 385 280 C 300 300, 220 280, 165 165" stroke="#8892d6" stroke-width="3" fill="none" marker-end="url(#ar)"/>
+        <text x="290" y="320" text-anchor="middle" font-size="15" fill="#ffd700" class="svg-label">🏠 到家了</text>
+      </svg>
+    </div>
+    <div class="legend">
+      <span style="color:#a8b2d1">点一下下面的规则看看 👇</span>
+    </div>
+
+    <div style="margin-top:18px">
+      <div class="rule" onclick="toggleDetail(1)">
+        <span class="arrow-flow">🚶 巡逻 → 😡 追击</span>
+        <span class="badge" style="background:#f5576c">看到你</span>
+        <span class="why">距离近 + 中间没墙</span>
+      </div>
+      <div class="rule" onclick="toggleDetail(1)">
+        <span class="arrow-flow">😡 追击 → 🤔 返回</span>
+        <span class="badge" style="background:#4f8ef7">跟丢了</span>
+        <span class="why">跑太远 / 躲墙后超过 0.8 秒</span>
+      </div>
+      <div class="rule" onclick="toggleDetail(1)">
+        <span class="arrow-flow">🤔 返回 → 🚶 巡逻</span>
+        <span class="badge" style="background:#2bb673">到家</span>
+        <span class="why">走回巡逻点，继续上班</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 视线检测 -->
+  <div class="card">
+    <h2>👀 墙后是隐身的！</h2>
+    <p style="font-size:19px; color:#c9d4f5; line-height:1.7">
+      以前怪物有"透视眼"——隔着墙也能发现你。<br>
+      现在它会朝你"连连看"：路上每隔 8 像素检查一次，<br>
+      只要有一个点是墙 → 看不见！
+    </p>
+    <div class="sight-demo">
+      <svg viewBox="0 0 760 240" xmlns="http://www.w3.org/2000/svg">
+        <!-- 地板 -->
+        <rect x="0" y="0" width="760" height="240" fill="#2a2f4a"/>
+
+        <!-- 墙 (场景1) -->
+        <rect x="60" y="30" width="20" height="120" fill="#556" rx="4"/>
+
+        <!-- 场景1: 隔墙 -->
+        <text x="150" y="55" font-size="17" fill="#8892d6">❌ 隔着墙 = 看不见</text>
+        <!-- 怪 -->
+        <circle cx="110" cy="180" r="16" fill="#b04df0"/>
+        <circle cx="105" cy="176" r="4" fill="#fff"/><circle cx="115" cy="176" r="4" fill="#fff"/>
+        <circle cx="105" cy="176" r="2" fill="#222"/><circle cx="115" cy="176" r="2" fill="#222"/>
+        <!-- 玩家 -->
+        <circle cx="110" cy="80" r="14" fill="#4f8ef7"/>
+        <!-- 被挡的视线（虚线+红叉） -->
+        <line x1="110" y1="164" x2="110" y2="96" stroke="#f5576c" stroke-width="3" stroke-dasharray="6 6"/>
+        <text x="128" y="130" font-size="26" fill="#f5576c">✕</text>
+
+        <!-- 分隔 -->
+        <line x1="380" y1="20" x2="380" y2="220" stroke="#444c70" stroke-width="2" stroke-dasharray="4 6"/>
+
+        <!-- 场景2: 无墙可见 -->
+        <text x="410" y="55" font-size="17" fill="#8892d6">✅ 没墙 = 发现你！</text>
+        <!-- 怪 -->
+        <circle cx="440" cy="180" r="16" fill="#b04df0"/>
+        <circle cx="435" cy="176" r="4" fill="#fff"/><circle cx="445" cy="176" r="4" fill="#fff"/>
+        <circle cx="435" cy="176" r="2" fill="#222"/><circle cx="445" cy="176" r="2" fill="#222"/>
+        <!-- 玩家 -->
+        <circle cx="700" cy="80" r="14" fill="#4f8ef7"/>
+        <!-- 视线采样点 -->
+        <g fill="#ffd700">
+          <circle cx="476" cy="169" r="4"/><circle cx="512" cy="158" r="4"/>
+          <circle cx="548" cy="147" r="4"/><circle cx="584" cy="136" r="4"/>
+          <circle cx="620" cy="125" r="4"/><circle cx="656" cy="114" r="4"/>
+          <circle cx="692" cy="102" r="4"/>
+        </g>
+        <line x1="440" y1="164" x2="700" y2="94" stroke="#ffd700" stroke-width="2" stroke-dasharray="3 5" opacity="0.55"/>
+        <text x="560" y="220" text-anchor="middle" font-size="14" fill="#ffd700">· 每 8 像素查一次 · 全是地板 = 看得见</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- 最后已知位置 -->
+  <div class="card">
+    <h2>🧠 怪物的小聪明</h2>
+    <div style="font-size:19px; color:#c9d4f5; line-height:1.9">
+      <p>💨 你躲到墙后 → 怪物<b style="color:#ffd700">记住你最后出现的位置</b></p>
+      <p>🏃 它会先跑到那个位置<b style="color:#ffd700">找一找</b>（不是马上放弃哦）</p>
+      <p>😶 找不到……才嘟囔着回家 🏠</p>
+      <p style="margin-top:14px; font-size:17px; color:#8892d6">这就是"最后已知位置"——让怪物像真的在动脑子</p>
+    </div>
+  </div>
+
+  <!-- Takeaway -->
+  <div class="takeaway">
+    <span class="icon">💡</span>
+    <p>状态机 = 给怪物一颗<br>"心情切换"的大脑</p>
+    <p class="sub">巡逻 → 追击 → 返回，三种心情 + 几条切换规则<br>以后想加新怪物？多加一个"心情"就行！</p>
+  </div>
+
+</div>
+
+<script>
+function toggleDetail(n) {
+  // 轻微反馈动画：点击规则行时闪烁徽章
+  const rules = document.querySelectorAll('.rule');
+  rules.forEach(r => {
+    r.style.transform = 'scale(1.0)';
+  });
+  event.currentTarget.style.transform = 'scale(1.02)';
+  setTimeout(() => { event.currentTarget.style.transform = 'scale(1.0)'; }, 200);
+}
+</script>
+</body>
+</html>
