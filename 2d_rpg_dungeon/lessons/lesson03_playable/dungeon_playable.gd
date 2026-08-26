@@ -92,6 +92,10 @@ var grid: Array = []
 
 var rooms: Array = []
 
+# 第 9 课方案 C：走廊数据（元素 = {cells: Array[Vector2i], room_a: int, room_b: int}）
+# 两端任一房间探索过 → 小地图整条走廊点亮
+var corridors: Array = []
+
 var entrance_cell := Vector2i.ZERO
 var exit_cell := Vector2i.ZERO
 
@@ -141,6 +145,14 @@ var dynamic_entities: Array[Node] = []
 # 第 8 课：独立 HUD 场景实例（hud.tscn）——显示逻辑全部下沉到它，Main 只推送数据
 @onready var hud: Node = get_node_or_null("HUD")
 
+# 第 9 课：房间检测与小地图
+# 当前房间索引 / 已探索房间（key=索引，字典查询 O(1)）/ 检测节流计时
+var current_room_index: int = -1
+var explored_rooms: Dictionary = {}
+var room_check_timer: float = 0.0
+
+@onready var minimap: Control = get_node_or_null("HUD/MiniMap")
+
 
 func _ready() -> void:
 	if tile_layer == null:
@@ -148,6 +160,15 @@ func _ready() -> void:
 		return
 
 	generate()
+
+
+func _process(delta: float) -> void:
+	# 第 9 课：房间检测节流——0.1s 一次足够（不必每帧，房间切换不是帧敏感事件）
+	room_check_timer += delta
+
+	if room_check_timer >= 0.1:
+		room_check_timer = 0.0
+		_update_player_room()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -167,6 +188,11 @@ func generate() -> void:
 	# 第 4 课：每层重置玩家状态
 	has_key = false
 	treasure_count = 0
+
+	# 第 9 课：每层重置房间探索状态（死亡重置层时同样走到这里，迷雾自然复原）
+	current_room_index = -1
+	explored_rooms.clear()
+	corridors.clear()
 
 	_setup_rng()
 
@@ -195,6 +221,10 @@ func generate() -> void:
 	# 作业 3：把最终的入口→出口路径交给覆盖层绘制（修复后的最新路径）
 	if path_overlay:
 		path_overlay.set_path(astar_grid.get_id_path(entrance_cell, exit_cell), cell_size)
+
+	# 第 9 课：初始化小地图并立即检测一次（开局入口房间即为已探索）
+	_setup_minimap()
+	_update_player_room()
 
 	_update_hud()
 	_update_gold_hud()
@@ -318,12 +348,21 @@ func _connect_rooms() -> void:
 
 		var b := _room_center(rooms[best_j])
 
+		# 第 9 课方案 C：收集本条走廊格子与两端房间（小地图"整条点亮"判定用）
+		var cells: Array[Vector2i] = []
+
 		if rng.randf() < 0.5:
-			_carve_h_corridor(from.x, b.x, from.y)
-			_carve_v_corridor(from.y, b.y, b.x)
+			_carve_h_corridor(from.x, b.x, from.y, cells)
+			_carve_v_corridor(from.y, b.y, b.x, cells)
 		else:
-			_carve_v_corridor(from.y, b.y, from.x)
-			_carve_h_corridor(from.x, b.x, b.y)
+			_carve_v_corridor(from.y, b.y, from.x, cells)
+			_carve_h_corridor(from.x, b.x, b.y, cells)
+
+		corridors.append({
+			"cells": cells,
+			"room_a": best_j,
+			"room_b": i,
+		})
 
 
 func _room_center(room: Rect2i) -> Vector2i:
@@ -333,20 +372,26 @@ func _room_center(room: Rect2i) -> Vector2i:
 	)
 
 
-func _carve_h_corridor(x1: int, x2: int, y: int) -> void:
+func _carve_h_corridor(x1: int, x2: int, y: int, sink: Array = []) -> void:
 	var from := mini(x1, x2)
 	var to := maxi(x1, x2)
 
 	for x in range(from, to + 1):
 		_set_cell(x, y, CELL_FLOOR)
+		# 第 9 课方案 C：可选收集走廊格子（小地图用；不影响挖掘顺序与 RNG）
+		if sink != null:
+			sink.append(Vector2i(x, y))
 
 
-func _carve_v_corridor(y1: int, y2: int, x: int) -> void:
+func _carve_v_corridor(y1: int, y2: int, x: int, sink: Array = []) -> void:
 	var from := mini(y1, y2)
 	var to := maxi(y1, y2)
 
 	for y in range(from, to + 1):
 		_set_cell(x, y, CELL_FLOOR)
+		# 第 9 课方案 C：可选收集走廊格子（小地图用；不影响挖掘顺序与 RNG）
+		if sink != null:
+			sink.append(Vector2i(x, y))
 
 
 func _set_cell(x: int, y: int, value: int) -> void:
@@ -462,12 +507,21 @@ func _ensure_exit_reachable() -> void:
 	push_warning("入口到出口不可达，正在自动修复。")
 
 	# 简单修复：直接从入口到出口挖一条 L 型通道
+	# 第 9 课方案 C：保底走廊也收集（端点房间按格子反查；查不到记 -1，点亮条件退化为另一端）
+	var fix_cells: Array[Vector2i] = []
+
 	if rng.randf() < 0.5:
-		_carve_h_corridor(entrance_cell.x, exit_cell.x, entrance_cell.y)
-		_carve_v_corridor(entrance_cell.y, exit_cell.y, exit_cell.x)
+		_carve_h_corridor(entrance_cell.x, exit_cell.x, entrance_cell.y, fix_cells)
+		_carve_v_corridor(entrance_cell.y, exit_cell.y, exit_cell.x, fix_cells)
 	else:
-		_carve_v_corridor(entrance_cell.y, exit_cell.y, entrance_cell.x)
-		_carve_h_corridor(entrance_cell.x, exit_cell.x, exit_cell.y)
+		_carve_v_corridor(entrance_cell.y, exit_cell.y, entrance_cell.x, fix_cells)
+		_carve_h_corridor(entrance_cell.x, exit_cell.x, exit_cell.y, fix_cells)
+
+	corridors.append({
+		"cells": fix_cells,
+		"room_a": _find_room_index_containing_cell(entrance_cell),
+		"room_b": _find_room_index_containing_cell(exit_cell),
+	})
 
 	_build_astar()
 
@@ -1022,6 +1076,8 @@ func _on_key_body_entered(body: Node2D, area: Area2D) -> void:
 
 	_update_hud()
 	_update_exit_lock_visual()
+	# 第 9 课：拿到钥匙后小地图黄点消失（show_key 开启时）
+	_update_minimap()
 	_remove_entity(area)
 
 
@@ -1055,6 +1111,8 @@ func respawn_player() -> void:
 	# 第 5 课：玩家死亡后重生到入口（轻惩罚版，保留）
 	if is_instance_valid(player_instance):
 		player_instance.global_position = get_entrance_world_position()
+		# 第 9 课：回入口后小地图立刻切回入口房间
+		_update_player_room()
 
 
 func reset_current_layer() -> void:
@@ -1210,6 +1268,75 @@ func _on_player_died() -> void:
 	# 作业 5（第 8 课）：死亡 → HUD 大字提示
 	if hud and hud.has_method("show_death"):
 		hud.show_death()
+
+
+# =========================
+# 第 9 课：房间检测与小地图
+# =========================
+
+func _setup_minimap() -> void:
+	# generate() 末尾：注入世界尺寸、房间矩形与走廊数据（方案 C）
+	if minimap and minimap.has_method("setup"):
+		minimap.setup(map_width, map_height, rooms, corridors)
+
+	_update_minimap()
+
+
+func _update_minimap() -> void:
+	# 状态变化时推送（探索记录/当前房间/入口/出口/钥匙）
+	if minimap and minimap.has_method("update_state"):
+		minimap.update_state(
+			explored_rooms,
+			current_room_index,
+			entrance_cell,
+			exit_cell,
+			has_key,
+			key_cell
+		)
+
+
+func _update_player_room() -> void:
+	# 世界坐标 → 格子 → 房间索引；变化才重绘（节流 + 按需）
+	if player_instance == null or not is_instance_valid(player_instance):
+		return
+
+	if tile_layer == null:
+		return
+
+	var local_position := tile_layer.to_local(player_instance.global_position)
+
+	var cell := Vector2i(
+		floori(local_position.x / float(cell_size)),
+		floori(local_position.y / float(cell_size))
+	)
+
+	var room_index := _find_room_index_containing_cell(cell)
+
+	# 走廊里不在任何房间——保持上一个当前房间不动
+	if room_index == -1:
+		return
+
+	var changed := false
+
+	if room_index != current_room_index:
+		current_room_index = room_index
+		changed = true
+
+	if not explored_rooms.has(room_index):
+		explored_rooms[room_index] = true
+		changed = true
+
+	if changed:
+		_update_minimap()
+
+
+func _find_room_index_containing_cell(cell: Vector2i) -> int:
+	# 索引版（explored_rooms 的 key 需要索引；Rect2i 版供第 5 课巡逻复用）
+	for i in rooms.size():
+		if _room_has_cell(rooms[i], cell):
+			return i
+
+	return -1
 
 
 # =========================

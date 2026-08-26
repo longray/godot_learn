@@ -5,6 +5,7 @@
 [ext_resource type="Texture2D" path="res://assets/sprites/heart_empty.png" id="3_heart_empty"]
 [ext_resource type="Texture2D" path="res://assets/sprites/gold.png" id="4_gold"]
 [ext_resource type="Texture2D" path="res://assets/sprites/key.png" id="5_key"]
+[ext_resource type="Script" path="res://lessons/lesson03_playable/minimap.gd" id="6_minimap"]
 
 [node name="HUD" type="CanvasLayer"]
 script = ExtResource("1_hud")
@@ -92,3 +93,6 @@ vertical_alignment = 1
 text = "你死了"
 mouse_filter = 2
 visible = false
+
+[node name="MiniMap" type="Control" parent="."]
+script = ExtResource("6_minimap")
