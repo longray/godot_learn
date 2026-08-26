@@ -96,6 +96,10 @@ var chase_speed: float = 0.0
 # 作业 2：朝向（随移动更新；发现判定用）
 var facing := Vector2.RIGHT
 
+# 作业 4（第 7 课）：AStar 追击——0.3s 重算路径，沿路点绕墙
+var _path_world: Array[Vector2] = []
+var _repath_timer: float = 0.0
+
 # 呼吸动画计时
 var _t := 0.0
 
@@ -391,16 +395,62 @@ func _process_patrol(delta: float) -> void:
 
 
 # =========================
-# 追击（第 7 课：奔向最后已知位置，非玩家实时坐标）
+# 追击（第 7 课：奔向最后已知位置；作业 4：AStar 寻路绕墙）
 # =========================
 
+func _repath_to(target_world: Vector2) -> void:
+	# 作业 4：格子级 AStar 寻路 → 世界坐标路点序列（不含起点）
+	_repath_timer = 0.3
+	_path_world.clear()
+
+	var tl: TileMapLayer = dungeon.tile_layer
+	if tl == null or not dungeon.has_method("is_cell_walkable"):
+		return
+
+	var from_cell := tl.local_to_map(tl.to_local(global_position))
+	var to_cell := tl.local_to_map(tl.to_local(target_world))
+
+	# 保底：贴墙时自身格可能是墙格（AStar 墙起点返回空路径）
+	# → 用邻域最近地板格作起点
+	if not dungeon.is_cell_walkable(from_cell):
+		var snapped := false
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+				Vector2i(1, 1), Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1)]:
+			if dungeon.is_cell_walkable(from_cell + d):
+				from_cell = from_cell + d
+				snapped = true
+				break
+		if not snapped:
+			return
+
+	if not dungeon.is_cell_walkable(to_cell):
+		return  # 目标格是墙：留空路径，调用方回退直线冲
+
+	var cells: Array = dungeon.astar_grid.get_id_path(from_cell, to_cell)
+
+	for i in range(1, cells.size()):  # 跳过起点自身
+		_path_world.append(tl.to_global(tl.map_to_local(cells[i])))
+
+
 func _process_chase(delta: float) -> void:
+	# 作业 4：0.3s 重算 AStar 路径；沿路点走（自动绕墙），无路径回退直线
+	_repath_timer -= delta
+	if _repath_timer <= 0.0:
+		_repath_to(last_known_player_position)
+
 	var target := last_known_player_position
+	if not _path_world.is_empty():
+		target = _path_world[0]
+
+		if global_position.distance_to(target) <= arrival_distance:
+			_path_world.pop_front()
+			target = _path_world[0] if not _path_world.is_empty() else last_known_player_position
+
 	var arrived := _move_towards(target, chase_speed, delta)
 	_update_stuck(delta)
 
 	if arrived:
-		# 到达最后已知位置但看不到玩家：转返回
+		# 到达最终目标但看不到玩家：转返回
 		if time_since_seen > 0.05:
 			state = EnemyState.RETURN
 			is_chasing = false
