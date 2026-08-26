@@ -1138,10 +1138,14 @@ func _create_drop_area(drop_type: String, world_position: Vector2) -> Area2D:
 	collision.shape = circle
 	area.add_child(collision)
 
-	# 像素素材可视化（金币/药水）
+	# 像素素材可视化（金币/药水）+ 上下浮动（吸引注意："地上有东西"）
 	var visual := Sprite2D.new()
 	visual.texture = GOLD_TEXTURE if drop_type == "gold" else POTION_TEXTURE
 	area.add_child(visual)
+
+	var tween := area.create_tween().set_loops()
+	tween.tween_property(visual, "position:y", -1.5, 0.5).set_trans(Tween.TRANS_SINE)
+	tween.tween_property(visual, "position:y", 0.0, 0.5).set_trans(Tween.TRANS_SINE)
 
 	area.add_to_group("drop")
 	area.body_entered.connect(_on_drop_body_entered.bind(area, drop_type))
