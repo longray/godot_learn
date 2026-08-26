@@ -4,7 +4,16 @@ extends CharacterBody2D
 # 第 3 课：简单地牢玩家移动
 # 第 4 课：四向行走动画 + 滚轮缩放
 # 第 5 课：生命值 + 受伤击退 + 无敌帧 + 死亡重生
+# 第 8 课：health_changed 信号——生命变化主动广播（HUD/任何关心者自行连接）
 # =========================
+
+# 第 8 课：生命变化信号（受伤/治疗/重置/死亡时 emit，Main 接收后转发 HUD）
+signal health_changed(current_health: int, max_health: int)
+
+# 作业 4/5（第 8 课）：事件信号——与 health_changed（状态量）互补的"瞬间事件"。
+# health_changed 治疗也会发，无法区分"掉血"和"回血"；红屏/死亡提示只在真事件发生时闪
+signal damaged(amount: int)
+signal died()
 
 @export var speed: float = 140.0
 
@@ -68,6 +77,9 @@ var _anim_t := 0.0
 func _ready() -> void:
 	health = max_health
 
+	# 第 8 课：初始生命广播（Main 连接后 HUD 显示满心）
+	health_changed.emit(health, max_health)
+
 
 func reset_for_new_layer() -> void:
 	health = max_health
@@ -75,7 +87,7 @@ func reset_for_new_layer() -> void:
 	knockback = Vector2.ZERO
 	modulate.a = 1.0
 
-	_notify_health_ui()
+	health_changed.emit(health, max_health)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -192,7 +204,8 @@ func take_damage(amount: int, source_position: Vector2) -> void:
 
 	print("玩家受伤，剩余生命：", health)
 
-	_notify_health_ui()
+	health_changed.emit(health, max_health)
+	damaged.emit(amount)  # 作业 4：红屏闪烁（喝药水不发此信号）
 
 	if health <= 0:
 		die()
@@ -205,10 +218,12 @@ func take_damage(amount: int, source_position: Vector2) -> void:
 func die() -> void:
 	print("玩家死亡，回到入口。")
 
+	died.emit()  # 作业 5：HUD 大字提示
+
 	health = max_health
 	knockback = Vector2.ZERO
 
-	_notify_health_ui()
+	health_changed.emit(health, max_health)
 
 	# 作业 5（第 5 课）：死亡重置本层（钥匙/宝箱/怪物复原）；
 	# 无此方法时回退轻惩罚（仅回入口）。generate 内部会重置位置与状态
@@ -221,18 +236,12 @@ func die() -> void:
 	_start_invincibility(invincibility_time * 1.5)
 
 
-func _notify_health_ui() -> void:
-	# 作业 1（第 5 课）：通知 HUD 刷新心形（dungeon 可能未注入，防御性检查）
-	if dungeon and dungeon.has_method("update_health_ui"):
-		dungeon.update_health_ui(health, max_health)
-
-
 func heal(amount: int) -> void:
 	# 第 6 课：药水回血（上限 max_health）
 	health = mini(max_health, health + amount)
 	print("恢复生命，当前生命：", health)
 
-	_notify_health_ui()
+	health_changed.emit(health, max_health)
 
 
 func _attack() -> void:

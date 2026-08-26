@@ -122,6 +122,9 @@ const POTION_TEXTURE: Texture2D = preload("res://assets/sprites/potion.png")
 # 第 6 课：金币计数（跨层保留——玩家长期资源）
 var gold_count: int = 0
 
+# 第 8 课：层数（出口进入下一层 +1；金币跨层保留，钥匙/宝箱/生命每层重置）
+var floor_number: int = 1
+
 var has_key := false
 var treasure_count := 0
 
@@ -135,15 +138,8 @@ var used_cells: Dictionary = {}
 # 当前地牢里生成的钥匙、宝箱、怪物节点（玩家和出口不在此列，仍复用）
 var dynamic_entities: Array[Node] = []
 
-# HUD 引用（场景里的 CanvasLayer > Label）
-@onready var key_label: Label = $HUD/KeyLabel
-@onready var treasure_label: Label = $HUD/TreasureLabel
-@onready var gold_label: Label = $HUD/GoldLabel
-@onready var health_ui: HBoxContainer = $HUD/HealthUI
-
-# 作业 1（第 5 课）：心形图标纹理
-const HEART_FULL_TEXTURE: Texture2D = preload("res://assets/sprites/heart_full.png")
-const HEART_EMPTY_TEXTURE: Texture2D = preload("res://assets/sprites/heart_empty.png")
+# 第 8 课：独立 HUD 场景实例（hud.tscn）——显示逻辑全部下沉到它，Main 只推送数据
+@onready var hud: Node = get_node_or_null("HUD")
 
 
 func _ready() -> void:
@@ -657,6 +653,8 @@ func _on_exit_body_entered(body: Node2D) -> void:
 	# 第 4 课：出口锁——必须先拿到钥匙
 	if has_key:
 		print("使用钥匙，进入下一层。")
+		# 第 8 课：层数 +1（金币跨层保留；钥匙/宝箱/生命由 generate 内部重置）
+		floor_number += 1
 		# 物理回调中不能直接改场景树，延迟到帧末安全执行
 		call_deferred("generate")
 	else:
@@ -1175,44 +1173,43 @@ func _on_drop_body_entered(body: Node2D, area: Area2D, drop_type: String) -> voi
 
 
 func _update_hud(locked_hint: bool = false) -> void:
-	# 作业 1：钥匙状态行
-	if key_label == null:
+	# 第 8 课：转发到独立 HUD（hud.tscn 实例）——Main 不再直接持有 Label
+	if hud == null:
 		return
 
-	if has_key:
-		key_label.text = "钥匙：已获得 ✓ 出口已解锁"
-		key_label.add_theme_color_override("font_color", Color(0.5, 1.0, 0.6))
-	elif locked_hint:
-		key_label.text = "出口被锁住了！去寻找金钥匙…"
-		key_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.4))
+	if locked_hint:
+		hud.show_key_locked_hint()
 	else:
-		key_label.text = "钥匙：未获得（找金钥匙）"
-		key_label.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0))
+		hud.update_key(has_key)
 
-		# 作业 1（第 5 课）：宝箱计数行（已开 / 总数；宝箱拾取后不回收格子，总数稳定）
-		if treasure_label != null:
-			treasure_label.text = "宝箱：%d/%d" % [treasure_count, treasure_cells.size()]
-			treasure_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4))
+	# 宝箱行无条件刷新（旧版嵌在 else 分支里，已获得钥匙时宝箱数不更新——顺手修正）
+	hud.update_treasure(treasure_count, treasure_cells.size())
+	hud.update_floor(floor_number)
 
 
 func _update_gold_hud() -> void:
 	# 作业 5（第 6 课）：金币计数（跨层保留，只在拾取时刷新）
-	if gold_label != null:
-		gold_label.text = "金币：%d" % gold_count
-		gold_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
+	if hud:
+		hud.update_gold(gold_count)
 
 
-func update_health_ui(current: int, max_value: int) -> void:
-	# 作业 1（第 5 课）：按当前生命点亮/熄灭心形（i < current 满心，否则空心）
-	if health_ui == null:
-		return
+func _on_player_health_changed(current_health: int, max_health: int) -> void:
+	# 第 8 课：接收玩家 health_changed 信号 → 转发 HUD 刷新心形
+	# （替代第 5 课的 player 直调 dungeon.update_health_ui——信号解耦，双向不认识对方）
+	if hud and hud.has_method("update_health"):
+		hud.update_health(current_health, max_health)
 
-	for i in health_ui.get_child_count():
-		var heart := health_ui.get_child(i) as TextureRect
-		if heart == null:
-			continue
 
-		heart.texture = HEART_FULL_TEXTURE if i < current else HEART_EMPTY_TEXTURE
+func _on_player_damaged(_amount: int) -> void:
+	# 作业 4（第 8 课）：受伤 → HUD 红屏闪烁
+	if hud and hud.has_method("flash_hurt"):
+		hud.flash_hurt()
+
+
+func _on_player_died() -> void:
+	# 作业 5（第 8 课）：死亡 → HUD 大字提示
+	if hud and hud.has_method("show_death"):
+		hud.show_death()
 
 
 # =========================
@@ -1238,6 +1235,21 @@ func _update_or_spawn_player() -> void:
 
 	if "dungeon" in player_instance:
 		player_instance.dungeon = self
+
+	# 第 8 课：连接玩家生命信号（实例重建时是全新对象，天然不会重复连接；
+	# is_connected 守卫兜底同一实例重复进入本函数的路径）
+	if player_instance.has_signal("health_changed"):
+		if not player_instance.is_connected("health_changed", _on_player_health_changed):
+			player_instance.connect("health_changed", _on_player_health_changed)
+
+	# 作业 4/5（第 8 课）：受伤红屏 / 死亡大字（事件信号，见 player.gd 注释）
+	if player_instance.has_signal("damaged"):
+		if not player_instance.is_connected("damaged", _on_player_damaged):
+			player_instance.connect("damaged", _on_player_damaged)
+
+	if player_instance.has_signal("died"):
+		if not player_instance.is_connected("died", _on_player_died):
+			player_instance.connect("died", _on_player_died)
 
 	# 第 5 课（5.7）：每层重置玩家生命/无敌/击退状态
 	if player_instance.has_method("reset_for_new_layer"):
