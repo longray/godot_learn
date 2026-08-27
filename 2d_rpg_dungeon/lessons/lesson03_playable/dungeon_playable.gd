@@ -175,6 +175,10 @@ var room_check_timer: float = 0.0
 
 
 func _ready() -> void:
+	# 第 11 课作业 2：死亡等待期暂停世界（get_tree().paused）——
+	# Main 必须永不停摆，否则暂停后收不到"任意键返回商店"
+	process_mode = Node.PROCESS_MODE_ALWAYS
+
 	# 第 10 课：启动先读档
 	# 第 11 课：存档职责迁至 GameData——启动时已 load_game，这里拉取镜像
 	# （get_node_or_null 而非全局名 GameData：--check-only 单脚本编译不加载 autoload 标识符）
@@ -210,6 +214,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if _death_awaiting_input:
 		if key.pressed and not key.echo:
 			_death_awaiting_input = false
+			# 先解除暂停再切场景——否则商店会继承 paused 状态整个冻住
+			get_tree().paused = false
 			get_tree().change_scene_to_file(SHOP_SCENE)
 		return
 
@@ -1191,13 +1197,19 @@ func reset_current_layer() -> void:
 	_update_hud()
 
 	if death_resets_run:
-		# 第 11 课 + 作业 2：死亡大字 + 损失副标题持续显示，等玩家按键再回商店
-		# （不再定时自动切——给玩家看清惩罚的仪式感）
+		# 第 11 课 + 作业 2：暂停世界 + 死亡大字持续显示，等玩家按键再回商店
+		# （暂停是关键——否则等待期怪物继续围殴无敌已结束的玩家，无限连死蒸发金币）
 		var lost_pct := int(round((1.0 - death_gold_keep_ratio) * 100.0))
 
 		if hud and hud.has_method("show_death"):
 			hud.show_death("损失 %d%% 金币 · 按任意键返回商店" % lost_pct, false)
 
+		# 踩坑：SceneTreeTimer 的 process_always 默认 true——paused 下照走！
+		# die() 设的 1.2s 无敌会正常到期解除。等待期防线 = player.take_damage 里
+		# 检查 get_tree().paused 短路（世界暂停=伤害无效），比在此处锁 invincible 可靠
+		# （协程解除会覆盖锁值）。
+
+		get_tree().paused = true
 		_death_awaiting_input = true
 	else:
 		# 轻模式（death_resets_run=false）：保留第 10 课行为——固定种子下本层复原
@@ -1353,7 +1365,10 @@ func _on_player_damaged(_amount: int) -> void:
 
 func _on_player_died() -> void:
 	# 作业 5（第 8 课）：死亡 → HUD 大字提示
-	if hud and hud.has_method("show_death"):
+	# 第 11 课作业 2 修复：大字职责单一化——回商店路径的持续版大字由
+	# reset_current_layer 触发；本转发只在轻死亡（本层复原）时走 1.2s 自动隐藏版，
+	# 否则两版打架（旧版 1.2s 后 hide_death 误关持续版大字）
+	if not death_resets_run and hud and hud.has_method("show_death"):
 		hud.show_death()
 
 

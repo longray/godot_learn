@@ -228,6 +228,12 @@ func take_damage(amount: int, source_position: Vector2) -> void:
 	if invincible:
 		return
 
+	# 第 11 课作业 2：世界暂停（死亡等待按键）期间伤害无效——
+	# SceneTreeTimer 的 process_always 默认 true，无敌 1.2s 到期在 paused 下照常解除，
+	# 此处短路是"等待期不被连杀"的最终防线
+	if get_tree().paused:
+		return
+
 	health -= amount
 
 	print("玩家受伤，剩余生命：", health)
