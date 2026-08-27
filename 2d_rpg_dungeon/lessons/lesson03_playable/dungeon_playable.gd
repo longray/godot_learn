@@ -25,6 +25,15 @@ extends Node2D
 
 @export var cell_size: int = 16
 
+# ---------- 第 10 课：死亡惩罚参数 ----------
+
+# 死亡后是否重置当前局（回第 1 层重新生成）；false = 保留第 5 课"本层复原"行为
+@export var death_resets_run: bool = true
+# 死亡后保留的金币比例（0.7 = 损失 30%）
+@export_range(0.0, 1.0) var death_gold_keep_ratio: float = 0.7
+# 死亡重开时是否随机地图种子（换一张新图）
+@export var randomize_seed_on_death: bool = true
+
 # ---------- TileMap 参数 ----------
 
 @export_group("TileMap")
@@ -129,6 +138,13 @@ var gold_count: int = 0
 # 第 8 课：层数（出口进入下一层 +1；金币跨层保留，钥匙/宝箱/生命每层重置）
 var floor_number: int = 1
 
+# 第 10 课：长期数据（跨局保存在 user:// 存档）
+var best_floor: int = 1
+var total_deaths: int = 0
+
+# 第 10 课：存档路径（user:// = 各平台用户数据目录，勿写 res://）
+const SAVE_PATH := "user://rpg_dungeon_save.json"
+
 var has_key := false
 var treasure_count := 0
 
@@ -155,6 +171,9 @@ var room_check_timer: float = 0.0
 
 
 func _ready() -> void:
+	# 第 10 课：启动先读档（金币/最佳层数/死亡次数——没有存档则保持默认值）
+	_load_game()
+
 	if tile_layer == null:
 		push_error("找不到 TileMapLayer，请确认场景里有名为 TileMapLayer 的子节点。")
 		return
@@ -709,6 +728,9 @@ func _on_exit_body_entered(body: Node2D) -> void:
 		print("使用钥匙，进入下一层。")
 		# 第 8 课：层数 +1（金币跨层保留；钥匙/宝箱/生命由 generate 内部重置）
 		floor_number += 1
+		# 第 10 课：更新最佳层数并保存（下楼即存档，随时关机不亏）
+		best_floor = maxi(best_floor, floor_number)
+		_save_game()
 		# 物理回调中不能直接改场景树，延迟到帧末安全执行
 		call_deferred("generate")
 	else:
@@ -1108,7 +1130,8 @@ func _on_monster_body_entered(body: Node2D, area: Area2D) -> void:
 
 
 func respawn_player() -> void:
-	# 第 5 课：玩家死亡后重生到入口（轻惩罚版，保留）
+	# 第 5 课：玩家死亡后重生到入口（轻惩罚版）
+	# 第 10 课：仅当 reset_current_layer 不存在时的回退分支（本仓库不可达，防御性保留）
 	if is_instance_valid(player_instance):
 		player_instance.global_position = get_entrance_world_position()
 		# 第 9 课：回入口后小地图立刻切回入口房间
@@ -1116,10 +1139,27 @@ func respawn_player() -> void:
 
 
 func reset_current_layer() -> void:
-	# 作业 5（第 5 课）：死亡重置本层——钥匙/宝箱/怪物全部复原重来
-	# 固定种子下 generate() 产出完全相同的层（玩家记忆保留，仅进度清零）；
-	# 随机种子下等于换新层（更狠的 roguelike 惩罚）
-	print("本层已重置！钥匙宝箱怪物全部复原。")
+	# 第 5 课：死亡重置本层——钥匙/宝箱/怪物全部复原重来
+	# 第 10 课：升级为死亡惩罚主路径（player.die() 的真实入口）
+	#   三连惩罚：死亡次数 +1 / 金币 ×death_gold_keep_ratio / 回第 1 层换新图
+	total_deaths += 1
+	gold_count = int(gold_count * death_gold_keep_ratio)
+
+	print("本层已重置！死亡 ", total_deaths, " 次，金币剩余：", gold_count)
+
+	if death_resets_run:
+		# 整局重开：回第 1 层 +（可选）随机种子换新图
+		floor_number = 1
+
+		if randomize_seed_on_death:
+			use_random_seed = true
+
+	_save_game()
+	_update_gold_hud()
+	# 金币惩罚后 HUD 必须单独刷金币行（_update_hud 不覆盖 gold_label）
+	_update_hud()
+
+	# 固定种子 + death_resets_run=false = 第 5 课本层复原；否则换新图/新局
 	generate()
 
 
@@ -1222,6 +1262,8 @@ func _on_drop_body_entered(body: Node2D, area: Area2D, drop_type: String) -> voi
 		gold_count += 1
 		print("捡到金币，当前金币：", gold_count)
 		_update_gold_hud()
+		# 第 10 课：捡到金币立刻存档（长期数据即时落盘）
+		_save_game()
 	elif drop_type == "potion":
 		if body.has_method("heal"):
 			body.heal(1)
@@ -1242,7 +1284,7 @@ func _update_hud(locked_hint: bool = false) -> void:
 
 	# 宝箱行无条件刷新（旧版嵌在 else 分支里，已获得钥匙时宝箱数不更新——顺手修正）
 	hud.update_treasure(treasure_count, treasure_cells.size())
-	hud.update_floor(floor_number)
+	hud.update_floor(floor_number, best_floor)
 
 
 func _update_gold_hud() -> void:
@@ -1268,6 +1310,61 @@ func _on_player_died() -> void:
 	# 作业 5（第 8 课）：死亡 → HUD 大字提示
 	if hud and hud.has_method("show_death"):
 		hud.show_death()
+
+
+# =========================
+# 第 10 课：存档（长期数据：金币/最佳层数/死亡次数）
+# =========================
+
+func _save_game() -> void:
+	# JSON 明文存档——可读可调试；局内状态（地图/钥匙/迷雾）不保存，每局从第 1 层开始
+	var data := {
+		"gold": gold_count,
+		"best_floor": best_floor,
+		"total_deaths": total_deaths
+	}
+
+	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+
+	if file == null:
+		push_warning("无法打开存档文件进行写入。")
+		return
+
+	file.store_string(JSON.stringify(data, "  "))
+
+
+func _load_game() -> void:
+	# 无存档 = 首次运行，保持默认值即可
+	if not FileAccess.file_exists(SAVE_PATH):
+		return
+
+	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+
+	if file == null:
+		push_warning("无法打开存档文件。")
+		return
+
+	var json := JSON.new()
+	var error := json.parse(file.get_as_text())
+
+	if error != OK:
+		push_warning("存档解析失败。")
+		return
+
+	if typeof(json.data) != TYPE_DICTIONARY:
+		push_warning("存档格式错误。")
+		return
+
+	# get 缺省值兜底：旧版本存档缺字段也不崩
+	gold_count = int(json.data.get("gold", gold_count))
+	best_floor = int(json.data.get("best_floor", best_floor))
+	total_deaths = int(json.data.get("total_deaths", total_deaths))
+
+
+func _delete_save() -> void:
+	# 作业 3 预留入口（调试删档）；无存档时静默通过
+	if FileAccess.file_exists(SAVE_PATH):
+		DirAccess.remove_absolute(SAVE_PATH)
 
 
 # =========================

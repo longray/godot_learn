@@ -71,9 +71,10 @@ func show_key_locked_hint() -> void:
 	key_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.4))
 
 
-func update_floor(floor_number: int) -> void:
-	# 第 8 课新增：层数显示（出口进入下一层时 +1）
-	floor_label.text = "层数：第 %d 层" % floor_number
+func update_floor(floor_number: int, best_floor_number: int = 1) -> void:
+	# 第 8 课：层数显示（出口进入下一层时 +1）
+	# 第 10 课：并列最佳层数（长期纪录，来自存档）
+	floor_label.text = "层数：第 %d 层 | 最佳：第 %d 层" % [floor_number, best_floor_number]
 	floor_label.add_theme_color_override("font_color", Color(0.55, 0.8, 1.0))
 
 
