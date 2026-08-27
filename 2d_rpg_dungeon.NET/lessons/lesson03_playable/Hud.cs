@@ -29,6 +29,7 @@ public partial class Hud : CanvasLayer
 	private Label _keyLabel = null!;
 	private Label _floorLabel = null!;
 	private Label _treasureLabel = null!;
+	private Label _exploreLabel = null!;
 
 	// 作业 2：钥匙图标（未获得时灰暗剪影，获得时点亮）
 	private TextureRect _keyIcon = null!;
@@ -47,6 +48,7 @@ public partial class Hud : CanvasLayer
 		_keyLabel = GetNode<Label>("VBoxContainer/KeyRow/KeyLabel");
 		_floorLabel = GetNode<Label>("VBoxContainer/FloorLabel");
 		_treasureLabel = GetNode<Label>("VBoxContainer/TreasureLabel");
+		_exploreLabel = GetNode<Label>("VBoxContainer/ExploreLabel");
 		_keyIcon = GetNode<TextureRect>("VBoxContainer/KeyRow/KeyIcon");
 		_hurtOverlay = GetNode<ColorRect>("HurtOverlay");
 		_deathLabel = GetNode<Label>("DeathLabel");
@@ -124,6 +126,13 @@ public partial class Hud : CanvasLayer
 		// 第 5 课格式迁移：已开 / 总数（宝箱拾取后不回收格子，总数稳定）
 		_treasureLabel.Text = $"宝箱：{opened}/{total}";
 		_treasureLabel.AddThemeColorOverride("font_color", new Color(1.0f, 0.67f, 0.43f));
+	}
+
+	public void UpdateExplore(int explored, int total)
+	{
+		// 作业 5（第 9 课）：探索进度（走进过的房间数 / 总房间数）
+		_exploreLabel.Text = $"探索：{explored} / {total}";
+		_exploreLabel.AddThemeColorOverride("font_color", new Color(0.65f, 0.85f, 1.0f));
 	}
 
 	public void FlashHurt()

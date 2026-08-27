@@ -126,6 +126,15 @@ public partial class DungeonPlayable : Node2D
 	// 第 8 课：独立 HUD 场景实例（hud.tscn）——显示逻辑全部下沉到它，Main 只推送数据
 	private Hud _hud;
 
+	// 第 9 课：房间检测与小地图
+	private MiniMap _minimap;
+	private int _currentRoomIndex = -1;
+	private readonly HashSet<int> _exploredRooms = new();
+	private float _roomCheckTimer;
+
+	// 第 9 课方案 C：走廊数据（两端任一房间探索过 → 小地图整条点亮）
+	private readonly List<CorridorSegment> _corridors = new();
+
 	// 像素素材（assets/sprites/generate_sprites.ps1 生成，16x16 透明背景）
 	private static readonly Texture2D KeyTexture =
 		GD.Load<Texture2D>("res://assets/sprites/key.png");
@@ -144,6 +153,11 @@ public partial class DungeonPlayable : Node2D
 	// ---------- 互操作/测试访问器（int[,] 不能直接编组给 GDScript） ----------
 
 	public int RoomCount => _rooms.Count;
+
+	// 第 9 课：互操作/测试访问器（private 字段引擎侧不可见，断言走这些）
+	public int CorridorCount => _corridors.Count;
+	public int ExploredRoomCount => _exploredRooms.Count;
+	public int CurrentRoomIndex => _currentRoomIndex;
 
 	public int FloorCellCount
 	{
@@ -185,6 +199,7 @@ public partial class DungeonPlayable : Node2D
 		_tileLayer = GetNode<TileMapLayer>("TileMapLayer");
 		_pathOverlay = GetNodeOrNull<PathOverlay>("PathOverlay");
 		_hud = GetNodeOrNull<Hud>("HUD");
+		_minimap = GetNodeOrNull<MiniMap>("HUD/MiniMap");
 
 		if (_tileLayer == null)
 		{
@@ -203,6 +218,18 @@ public partial class DungeonPlayable : Node2D
 		}
 	}
 
+	public override void _Process(double delta)
+	{
+		// 第 9 课：房间检测节流——0.1s 一次足够（不必每帧，房间切换不是帧敏感事件）
+		_roomCheckTimer += (float)delta;
+
+		if (_roomCheckTimer >= 0.1f)
+		{
+			_roomCheckTimer = 0.0f;
+			UpdatePlayerRoom();
+		}
+	}
+
 	public void Generate()
 	{
 		// 防止地图太小
@@ -212,6 +239,11 @@ public partial class DungeonPlayable : Node2D
 		// 第 4 课：每层重置玩家状态
 		HasKey = false;
 		TreasureCount = 0;
+
+		// 第 9 课：每层重置房间探索状态（死亡重置层时同样走到这里，迷雾自然复原）
+		_currentRoomIndex = -1;
+		_exploredRooms.Clear();
+		_corridors.Clear();
 
 		SetupRng();
 
@@ -239,6 +271,10 @@ public partial class DungeonPlayable : Node2D
 
 		// 作业 3：把最终的入口→出口路径交给覆盖层绘制（修复后的最新路径）
 		_pathOverlay?.SetPath(ToArray(_astarGrid.GetIdPath(EntranceCell, ExitCell)), CellSize);
+
+		// 第 9 课：初始化小地图并立即检测一次（开局入口房间即为已探索）
+		SetupMinimap();
+		UpdatePlayerRoom();
 
 		UpdateHud();
 
@@ -399,18 +435,23 @@ public partial class DungeonPlayable : Node2D
 				}
 			}
 
-			Vector2I b = RoomCenter(_rooms[bestJ]);
+		Vector2I b = RoomCenter(_rooms[bestJ]);
 
-			if (_rng.Randf() < 0.5f)
-			{
-				CarveHCorridor(from.X, b.X, from.Y);
-				CarveVCorridor(from.Y, b.Y, b.X);
-			}
-			else
-			{
-				CarveVCorridor(from.Y, b.Y, from.X);
-				CarveHCorridor(from.X, b.X, b.Y);
-			}
+		// 第 9 课方案 C：收集本条走廊格子与两端房间（小地图"整条点亮"判定用）
+		var cells = new List<Vector2I>();
+
+		if (_rng.Randf() < 0.5f)
+		{
+			CarveHCorridor(from.X, b.X, from.Y, cells);
+			CarveVCorridor(from.Y, b.Y, b.X, cells);
+		}
+		else
+		{
+			CarveVCorridor(from.Y, b.Y, from.X, cells);
+			CarveHCorridor(from.X, b.X, b.Y, cells);
+		}
+
+		_corridors.Add(new CorridorSegment(cells, bestJ, i));
 		}
 	}
 
@@ -422,7 +463,7 @@ public partial class DungeonPlayable : Node2D
 		);
 	}
 
-	private void CarveHCorridor(int x1, int x2, int y)
+	private void CarveHCorridor(int x1, int x2, int y, List<Vector2I>? sink = null)
 	{
 		int from = Mathf.Min(x1, x2);
 		int to = Mathf.Max(x1, x2);
@@ -430,10 +471,12 @@ public partial class DungeonPlayable : Node2D
 		for (int x = from; x <= to; x++)
 		{
 			SetCell(x, y, CellFloor);
+			// 第 9 课方案 C：可选收集走廊格子（小地图用；不影响挖掘顺序与 RNG）
+			sink?.Add(new Vector2I(x, y));
 		}
 	}
 
-	private void CarveVCorridor(int y1, int y2, int x)
+	private void CarveVCorridor(int y1, int y2, int x, List<Vector2I>? sink = null)
 	{
 		int from = Mathf.Min(y1, y2);
 		int to = Mathf.Max(y1, y2);
@@ -441,6 +484,8 @@ public partial class DungeonPlayable : Node2D
 		for (int y = from; y <= to; y++)
 		{
 			SetCell(x, y, CellFloor);
+			// 第 9 课方案 C：可选收集走廊格子（小地图用；不影响挖掘顺序与 RNG）
+			sink?.Add(new Vector2I(x, y));
 		}
 	}
 
@@ -603,16 +648,23 @@ public partial class DungeonPlayable : Node2D
 		GD.PushWarning("入口到出口不可达，正在自动修复。");
 
 		// 简单修复：直接从入口到出口挖一条 L 型通道
+		// 第 9 课方案 C：保底走廊也收集（端点房间按格子反查）
+		var fixCells = new List<Vector2I>();
+
 		if (_rng.Randf() < 0.5f)
 		{
-			CarveHCorridor(EntranceCell.X, ExitCell.X, EntranceCell.Y);
-			CarveVCorridor(EntranceCell.Y, ExitCell.Y, ExitCell.X);
+			CarveHCorridor(EntranceCell.X, ExitCell.X, EntranceCell.Y, fixCells);
+			CarveVCorridor(EntranceCell.Y, ExitCell.Y, ExitCell.X, fixCells);
 		}
 		else
 		{
-			CarveVCorridor(EntranceCell.Y, ExitCell.Y, EntranceCell.X);
-			CarveHCorridor(EntranceCell.X, ExitCell.X, ExitCell.Y);
+			CarveVCorridor(EntranceCell.Y, ExitCell.Y, EntranceCell.X, fixCells);
+			CarveHCorridor(EntranceCell.X, ExitCell.X, ExitCell.Y, fixCells);
 		}
+
+		_corridors.Add(new CorridorSegment(fixCells,
+			FindRoomIndexContainingCell(EntranceCell),
+			FindRoomIndexContainingCell(ExitCell)));
 
 		BuildAStar();
 
@@ -1369,6 +1421,8 @@ public partial class DungeonPlayable : Node2D
 
 		UpdateHud();
 		UpdateExitLockVisual();
+		// 第 9 课：拿到钥匙后小地图黄点消失（ShowKey 开启时）
+		UpdateMinimap();
 		RemoveEntity(area);
 	}
 
@@ -1795,6 +1849,8 @@ public partial class DungeonPlayable : Node2D
 		if (GodotObject.IsInstanceValid(_playerInstance))
 		{
 			_playerInstance.GlobalPosition = GetEntranceWorldPosition();
+			// 第 9 课：回入口后小地图立刻切回入口房间
+			UpdatePlayerRoom();
 		}
 	}
 
@@ -1822,6 +1878,131 @@ public partial class DungeonPlayable : Node2D
 	{
 		// 作业 5（第 8 课）：死亡 → HUD 大字提示
 		_hud?.ShowDeath();
+	}
+
+	// =========================
+	// 第 9 课：房间检测与小地图
+	// =========================
+
+	private void SetupMinimap()
+	{
+		// Generate() 末尾：注入世界尺寸、房间矩形、走廊数据与类型表
+		_minimap?.Setup(MapWidth, MapHeight, _rooms, _corridors, BuildRoomTypes());
+
+		UpdateMinimap();
+	}
+
+	private int[] BuildRoomTypes()
+	{
+		// 作业 4：房间类型表（纯读取已有 POI 格子，不碰 RNG）
+		// 优先级：入口 > 出口 > 宝箱 > 怪物 > 普通（导航价值高的覆盖低的）
+		var types = new int[_rooms.Count];
+
+		foreach (Vector2I cell in TreasureCells)
+		{
+			int idx = FindRoomIndexContainingCell(cell);
+			if (idx >= 0)
+			{
+				types[idx] = MiniMap.RoomTreasure;
+			}
+		}
+
+		foreach (Vector2I cell in MonsterCells)
+		{
+			int idx = FindRoomIndexContainingCell(cell);
+			if (idx >= 0 && types[idx] == MiniMap.RoomNormal)
+			{
+				types[idx] = MiniMap.RoomMonster;
+			}
+		}
+
+		int entranceIdx = FindRoomIndexContainingCell(EntranceCell);
+		if (entranceIdx >= 0)
+		{
+			types[entranceIdx] = MiniMap.RoomEntrance;
+		}
+
+		int exitIdx = FindRoomIndexContainingCell(ExitCell);
+		if (exitIdx >= 0)
+		{
+			types[exitIdx] = MiniMap.RoomExit;
+		}
+
+		return types;
+	}
+
+	private void UpdateMinimap()
+	{
+		// 状态变化时推送（探索记录/当前房间/入口/出口/钥匙）
+		_minimap?.UpdateState(
+			_exploredRooms,
+			_currentRoomIndex,
+			EntranceCell,
+			ExitCell,
+			HasKey,
+			KeyCell,
+			// 作业 1：出口所在房间索引（探索过才画红点）
+			FindRoomIndexContainingCell(ExitCell),
+			// 作业 2：钥匙所在房间索引（探索过才画黄点）
+			FindRoomIndexContainingCell(KeyCell));
+
+		// 作业 5：探索进度行（探索变化时同步刷新）
+		_hud?.UpdateExplore(_exploredRooms.Count, _rooms.Count);
+	}
+
+	private void UpdatePlayerRoom()
+	{
+		// 世界坐标 → 格子 → 房间索引；变化才重绘（节流 + 按需）
+		if (_playerInstance == null || !GodotObject.IsInstanceValid(_playerInstance) || _tileLayer == null)
+		{
+			return;
+		}
+
+		Vector2 localPosition = _tileLayer.ToLocal(_playerInstance.GlobalPosition);
+
+		var cell = new Vector2I(
+			Mathf.FloorToInt(localPosition.X / CellSize),
+			Mathf.FloorToInt(localPosition.Y / CellSize));
+
+		int roomIndex = FindRoomIndexContainingCell(cell);
+
+		// 走廊里不在任何房间——保持上一个当前房间不动
+		if (roomIndex == -1)
+		{
+			return;
+		}
+
+		bool changed = false;
+
+		if (roomIndex != _currentRoomIndex)
+		{
+			_currentRoomIndex = roomIndex;
+			changed = true;
+		}
+
+		if (_exploredRooms.Add(roomIndex))
+		{
+			changed = true;
+		}
+
+		if (changed)
+		{
+			UpdateMinimap();
+		}
+	}
+
+	private int FindRoomIndexContainingCell(Vector2I cell)
+	{
+		// 索引版（exploredRooms 的 key 需要索引）；RoomHasCell 复用既有实现
+		for (int i = 0; i < _rooms.Count; i++)
+		{
+			if (RoomHasCell(_rooms[i], cell))
+			{
+				return i;
+			}
+		}
+
+		return -1;
 	}
 
 	public bool IsWorldPositionWalkable(Vector2 worldPosition, float radius = 0.0f)
