@@ -15,7 +15,10 @@ signal health_changed(current_health: int, max_health: int)
 signal damaged(amount: int)
 signal died()
 
-@export var speed: float = 140.0
+# 第 11 课：基础属性（商店永久升级在此之上叠加；调平衡改这三个）
+@export var base_max_health: int = 3
+@export var base_speed: float = 140.0
+@export var base_attack_damage: int = 1
 
 # 作业 5（第 3 课）：移动阻挡方式开关（运行时对比手感用）
 # true  = 真实物理碰撞：穿墙由 TileSet 物理层的碰撞体阻止（move_and_slide 解算）
@@ -27,12 +30,11 @@ signal died()
 # （仅数据驱动模式使用；物理模式下由 CollisionShape2D 的 CircleShape r=5 参与解算）
 @export var collision_radius: float = 5.0
 
-# 第 5 课：生命与受伤参数
-@export var max_health: int = 3
+# 第 5 课：生命与受伤参数（max_health 由 apply_upgrades 计算，不再是 @export）
 @export var invincibility_time: float = 0.8
 
 # 第 6 课：攻击参数（临时 Area2D 方案——生成→存在 0.08s→销毁）
-@export var attack_damage: int = 1
+# attack_damage 由 apply_upgrades 计算，不再是 @export
 @export var attack_cooldown: float = 0.35
 @export var attack_duration: float = 0.08
 @export var attack_radius: float = 12.0
@@ -47,6 +49,11 @@ var dungeon: Node
 var health: int = 3
 var invincible: bool = false
 var knockback := Vector2.ZERO
+
+# 第 11 课：最终属性 = base_* + GameData 永久等级（apply_upgrades 每次进图/换层刷新）
+var max_health: int = 3
+var speed: float = 140.0
+var attack_damage: int = 1
 
 # 第 6 课：朝向（攻击方向）与攻击冷却
 var facing := Vector2.RIGHT
@@ -75,6 +82,9 @@ var _anim_t := 0.0
 
 
 func _ready() -> void:
+	# 第 11 课：先应用商店升级再取生命（顺序反了当前血不会满——文档问题 5 的坑）
+	apply_upgrades()
+
 	health = max_health
 
 	# 第 8 课：初始生命广播（Main 连接后 HUD 显示满心）
@@ -82,12 +92,30 @@ func _ready() -> void:
 
 
 func reset_for_new_layer() -> void:
+	# 第 11 课：每次换层刷新升级（商店购买后下一层立即生效）
+	apply_upgrades()
+
 	health = max_health
 	invincible = false
 	knockback = Vector2.ZERO
 	modulate.a = 1.0
 
 	health_changed.emit(health, max_health)
+
+
+func apply_upgrades() -> void:
+	# 第 11 课：基础值 + GameData 永久等级 = 最终属性（Autoload 未注册时回退基础值）
+	var game_data := get_node_or_null("/root/GameData")
+
+	if game_data == null:
+		max_health = base_max_health
+		speed = base_speed
+		attack_damage = base_attack_damage
+		return
+
+	max_health = base_max_health + game_data.get_max_health_bonus()
+	speed = base_speed * game_data.get_speed_multiplier()
+	attack_damage = base_attack_damage + game_data.get_attack_bonus()
 
 
 func _unhandled_input(event: InputEvent) -> void:

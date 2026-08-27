@@ -11,11 +11,12 @@ config_version=5
 [application]
 
 config/name="2D RPG Dungeon (GDScript)"
-run/main_scene="res://lessons/lesson03_playable/lesson03.tscn"
+run/main_scene="res://lessons/lesson03_playable/shop.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [autoload]
 
+GameData="*res://lessons/lesson03_playable/game_data.gd"
 _mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
 
 [editor_plugins]

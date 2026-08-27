@@ -139,11 +139,12 @@ var gold_count: int = 0
 var floor_number: int = 1
 
 # 第 10 课：长期数据（跨局保存在 user:// 存档）
+# 第 11 课：降级为局内镜像——真源与存档职责已迁至 GameData（Autoload）
 var best_floor: int = 1
 var total_deaths: int = 0
 
-# 第 10 课：存档路径（user:// = 各平台用户数据目录，勿写 res://）
-const SAVE_PATH := "user://rpg_dungeon_save.json"
+# 第 11 课：死亡结算后返回商店（游戏主循环：商店 → 地牢 → 死亡 → 商店）
+const SHOP_SCENE := "res://lessons/lesson03_playable/shop.tscn"
 
 var has_key := false
 var treasure_count := 0
@@ -171,8 +172,15 @@ var room_check_timer: float = 0.0
 
 
 func _ready() -> void:
-	# 第 10 课：启动先读档（金币/最佳层数/死亡次数——没有存档则保持默认值）
-	_load_game()
+	# 第 10 课：启动先读档
+	# 第 11 课：存档职责迁至 GameData——启动时已 load_game，这里拉取镜像
+	# （get_node_or_null 而非全局名 GameData：--check-only 单脚本编译不加载 autoload 标识符）
+	var game_data := get_node_or_null("/root/GameData")
+
+	if game_data:
+		gold_count = game_data.gold
+		best_floor = game_data.best_floor
+		total_deaths = game_data.total_deaths
 
 	if tile_layer == null:
 		push_error("找不到 TileMapLayer，请确认场景里有名为 TileMapLayer 的子节点。")
@@ -198,9 +206,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	if key.pressed and not key.echo and key.keycode == KEY_R:
 		generate()
 
-	# 作业 3（第 10 课）：Backspace 删档重开（调试用——清空金币/最佳层数/死亡次数）
+	# 作业 3（第 10 课）：Backspace 删档重开（调试用——清空金币/纪录/升级等级）
 	if key.pressed and not key.echo and key.keycode == KEY_BACKSPACE:
-		_delete_save()
+		var game_data := get_node_or_null("/root/GameData")
+		if game_data:
+			game_data.call("reset_progress")
 		gold_count = 0
 		best_floor = 1
 		total_deaths = 0
@@ -742,7 +752,7 @@ func _on_exit_body_entered(body: Node2D) -> void:
 		floor_number += 1
 		# 第 10 课：更新最佳层数并保存（下楼即存档，随时关机不亏）
 		best_floor = maxi(best_floor, floor_number)
-		_save_game()
+		_sync_game_data()
 		# 物理回调中不能直接改场景树，延迟到帧末安全执行
 		call_deferred("generate")
 	else:
@@ -1151,28 +1161,32 @@ func respawn_player() -> void:
 
 
 func reset_current_layer() -> void:
-	# 第 5 课：死亡重置本层——钥匙/宝箱/怪物全部复原重来
-	# 第 10 课：升级为死亡惩罚主路径（player.die() 的真实入口）
-	#   三连惩罚：死亡次数 +1 / 金币 ×death_gold_keep_ratio / 回第 1 层换新图
+	# 第 5 课：死亡重置本层 → 第 10 课：死亡三连惩罚 → 第 11 课：死亡返回商店
+	# 惩罚三连：死亡次数 +1 / 金币 ×death_gold_keep_ratio / 层数归 1（参数可调，@export）
 	total_deaths += 1
 	gold_count = int(gold_count * death_gold_keep_ratio)
 
 	print("本层已重置！死亡 ", total_deaths, " 次，金币剩余：", gold_count)
 
 	if death_resets_run:
-		# 整局重开：回第 1 层 +（可选）随机种子换新图
+		# 整局结束：层数归 1 +（可选）随机种子——下一局从商店进入时生效
 		floor_number = 1
 
 		if randomize_seed_on_death:
 			use_random_seed = true
 
-	_save_game()
+	_sync_game_data()
 	_update_gold_hud()
 	# 金币惩罚后 HUD 必须单独刷金币行（_update_hud 不覆盖 gold_label）
 	_update_hud()
 
-	# 固定种子 + death_resets_run=false = 第 5 课本层复原；否则换新图/新局
-	generate()
+	if death_resets_run:
+		# 第 11 课：死亡不再原地重开——等 HUD 死亡大字（1.2s）播完再切回商店
+		await get_tree().create_timer(1.5).timeout
+		get_tree().change_scene_to_file(SHOP_SCENE)
+	else:
+		# 轻模式（death_resets_run=false）：保留第 10 课行为——固定种子下本层复原
+		generate()
 
 
 func _remove_entity(entity: Node) -> void:
@@ -1275,7 +1289,7 @@ func _on_drop_body_entered(body: Node2D, area: Area2D, drop_type: String) -> voi
 		print("捡到金币，当前金币：", gold_count)
 		_update_gold_hud()
 		# 第 10 课：捡到金币立刻存档（长期数据即时落盘）
-		_save_game()
+		_sync_game_data()
 	elif drop_type == "potion":
 		if body.has_method("heal"):
 			body.heal(1)
@@ -1329,58 +1343,21 @@ func _on_player_died() -> void:
 
 
 # =========================
-# 第 10 课：存档（长期数据：金币/最佳层数/死亡次数）
+# 第 10 课：存档 → 第 11 课迁至 GameData；Main 只做镜像同步
 # =========================
 
-func _save_game() -> void:
-	# JSON 明文存档——可读可调试；局内状态（地图/钥匙/迷雾）不保存，每局从第 1 层开始
-	var data := {
-		"gold": gold_count,
-		"best_floor": best_floor,
-		"total_deaths": total_deaths
-	}
+func _sync_game_data() -> void:
+	# 镜像 → 真源：长期数据变化时同步 GameData 并落盘
+	var game_data := get_node_or_null("/root/GameData")
 
-	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-
-	if file == null:
-		push_warning("无法打开存档文件进行写入。")
+	if game_data == null:
 		return
 
-	file.store_string(JSON.stringify(data, "  "))
+	game_data.gold = gold_count
+	game_data.best_floor = best_floor
+	game_data.total_deaths = total_deaths
 
-
-func _load_game() -> void:
-	# 无存档 = 首次运行，保持默认值即可
-	if not FileAccess.file_exists(SAVE_PATH):
-		return
-
-	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
-
-	if file == null:
-		push_warning("无法打开存档文件。")
-		return
-
-	var json := JSON.new()
-	var error := json.parse(file.get_as_text())
-
-	if error != OK:
-		push_warning("存档解析失败。")
-		return
-
-	if typeof(json.data) != TYPE_DICTIONARY:
-		push_warning("存档格式错误。")
-		return
-
-	# get 缺省值兜底：旧版本存档缺字段也不崩
-	gold_count = int(json.data.get("gold", gold_count))
-	best_floor = int(json.data.get("best_floor", best_floor))
-	total_deaths = int(json.data.get("total_deaths", total_deaths))
-
-
-func _delete_save() -> void:
-	# 作业 3 预留入口（调试删档）；无存档时静默通过
-	if FileAccess.file_exists(SAVE_PATH):
-		DirAccess.remove_absolute(SAVE_PATH)
+	game_data.save_game()
 
 
 # =========================

@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ELI5: 第 11 课 · 商店与永久升级</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', Roboto, sans-serif;
+      background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+      min-height: 100vh;
+      color: #fff;
+    }
+
+    .container { max-width: 960px; margin: 0 auto; padding: 40px 20px 80px; }
+
+    .hero { text-align: center; padding: 46px 20px 36px; }
+    .hero-icon { font-size: 86px; display: inline-block; animation: swing 2.4s ease-in-out infinite; }
+    @keyframes swing {
+      0%, 100% { transform: rotate(-8deg); }
+      50% { transform: rotate(8deg); }
+    }
+    .hero h1 { font-size: 48px; margin-top: 16px; text-shadow: 0 4px 20px rgba(0,0,0,0.35); }
+    .hero .subtitle { font-size: 21px; margin-top: 12px; opacity: 0.92; }
+    .lesson-badge {
+      display: inline-block; margin-top: 20px; padding: 8px 24px;
+      border: 2px solid rgba(255,255,255,0.7); border-radius: 999px;
+      font-size: 15px; background: rgba(255,255,255,0.12);
+    }
+
+    h2 { font-size: 36px; margin: 56px 0 22px; text-align: center; text-shadow: 0 3px 14px rgba(0,0,0,0.3); }
+
+    .card {
+      background: rgba(255,255,255,0.10);
+      border: 1px solid rgba(255,255,255,0.22);
+      border-radius: 20px; padding: 28px; margin-bottom: 24px;
+      backdrop-filter: blur(6px);
+      will-change: transform; transform: translateZ(0);
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
+    }
+    .card:hover { transform: translateY(-5px); box-shadow: 0 20px 60px rgba(0,0,0,0.30); }
+
+    /* ===== 循环图 ===== */
+    .loop-svg text { font-family: inherit; }
+    .loop-node { cursor: pointer; transition: opacity 0.2s; }
+    .loop-node:hover { opacity: 0.75; }
+
+    /* ===== 商店演示 ===== */
+    .shop-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .shop-panel {
+      background: linear-gradient(160deg, #111218 0%, #0b0d14 100%);
+      border: 2px solid rgba(255,255,255,0.25); border-radius: 14px; padding: 20px;
+    }
+    .shop-title { font-size: 24px; font-weight: 900; text-align: center; margin-bottom: 4px; color: #ffd54a; }
+    .shop-gold { text-align: center; font-size: 17px; color: #ffd54a; margin-bottom: 14px; }
+    .shop-btn {
+      display: block; width: 100%; border: none; border-radius: 10px; padding: 12px;
+      font-size: 14.5px; font-weight: 700; color: #fff; cursor: pointer; font-family: inherit;
+      margin-bottom: 9px; text-align: center;
+      transition: transform 0.15s, filter 0.15s, opacity 0.15s;
+    }
+    .shop-btn:hover:not(:disabled) { transform: scale(1.02); filter: brightness(1.15); }
+    .shop-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn-hp { background: linear-gradient(135deg, #f5576c, #f093fb); }
+    .btn-atk { background: linear-gradient(135deg, #ff9966, #ff5e62); }
+    .btn-spd { background: linear-gradient(135deg, #4facfe, #00f2fe); }
+    .btn-start { background: linear-gradient(135deg, #56ab2f, #a8e063); color: #1a3300; font-size: 16px; margin-bottom: 0; }
+    .shop-tip { font-size: 12.5px; opacity: 0.7; text-align: center; margin-top: 12px; }
+
+    .stat-panel { display: flex; flex-direction: column; gap: 12px; }
+    .stat-row {
+      background: rgba(0,0,0,0.4); border-radius: 12px; padding: 14px 16px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .stat-row .name { font-size: 16px; font-weight: 700; }
+    .stat-row .val { font-size: 20px; font-weight: 900; font-family: Consolas, monospace; }
+    .val.hp { color: #ff7b8a; } .val.atk { color: #ffab6e; } .val.spd { color: #8ec9ff; }
+    .stat-lv { font-size: 12.5px; opacity: 0.75; }
+    .bought { animation: bpulse 0.5s; }
+    @keyframes bpulse { 0% { background: rgba(168,224,99,0.45); } 100% { background: rgba(0,0,0,0.4); } }
+
+    /* ===== GameData 可视化 ===== */
+    .gd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .gd-box { border-radius: 16px; padding: 20px; text-align: center; }
+    .gd-box.bad { background: rgba(245, 93, 108, 0.14); border: 2px dashed rgba(245, 93, 108, 0.6); }
+    .gd-box.good { background: rgba(86, 171, 47, 0.14); border: 2px solid rgba(168, 224, 99, 0.7); }
+    .gd-box h3 { font-size: 18px; margin-bottom: 10px; }
+    .gd-box p { font-size: 14px; line-height: 1.8; opacity: 0.9; }
+    .gd-box code {
+      background: rgba(0,0,0,0.35); border-radius: 6px; padding: 2px 7px;
+      font-family: Consolas, monospace; font-size: 13px; color: #ffd54a;
+    }
+
+    /* ===== 价格曲线 ===== */
+    .price-svg text { font-family: inherit; }
+
+    /* ===== 作业卡 ===== */
+    .hw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
+    .hw-card {
+      border-radius: 16px; padding: 20px 14px; text-align: center;
+      background: rgba(0,0,0,0.28); border: 2px solid rgba(255,255,255,0.25);
+      transition: transform 0.2s; position: relative;
+    }
+    .hw-card:hover { transform: translateY(-6px) scale(1.02); }
+    .hw-num { position: absolute; top: 10px; left: 12px; font-size: 13px; font-weight: 700; opacity: 0.65; }
+    .hw-icon { font-size: 40px; display: block; margin: 6px 0 10px; }
+    .hw-name { font-size: 15.5px; font-weight: 700; }
+    .hw-desc { font-size: 12.5px; opacity: 0.82; margin-top: 6px; line-height: 1.55; }
+    .hw-idea {
+      margin-top: 10px; font-size: 12px; text-align: left;
+      background: rgba(0,0,0,0.3); border-radius: 8px; padding: 8px 10px;
+      line-height: 1.6; color: #ffd54a;
+    }
+    .hw-card.recommend { border-color: rgba(255, 255, 255, 0.85); background: rgba(255,255,255,0.14); }
+    .hw-card .stamp {
+      position: absolute; top: -10px; right: -8px;
+      background: #fff; color: #11998e; font-size: 11px; font-weight: 800;
+      padding: 4px 10px; border-radius: 999px; transform: rotate(8deg);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+    }
+
+    .takeaway {
+      margin-top: 48px;
+      background: linear-gradient(135deg, rgba(255,215,0,0.20), rgba(255,140,0,0.20));
+      border: 2px solid rgba(255,215,0,0.65); border-radius: 20px;
+      padding: 28px; text-align: center; font-size: 21px; line-height: 1.75;
+    }
+    .takeaway .icon { font-size: 42px; display: block; margin-bottom: 10px; }
+
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 32px; }
+      h2 { font-size: 26px; }
+      .shop-wrap { grid-template-columns: 1fr; }
+      .gd-grid { grid-template-columns: 1fr; }
+      .hero-icon { font-size: 60px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <!-- ================= Hero ================= -->
+    <div class="hero">
+      <div class="hero-icon">🏪</div>
+      <h1>商店与永久升级</h1>
+      <p class="subtitle">死亡留下的金币，终于变成了力量——游戏闭环成型</p>
+      <div class="lesson-badge">第 11 课 · Godot 2D RPG 地牢</div>
+    </div>
+
+    <!-- ================= 类比：游戏循环 ================= -->
+    <h2>🔄 游戏循环：跑圈变强</h2>
+    <div class="card">
+      <svg viewBox="0 0 900 300" style="width: 100%;" class="loop-svg">
+        <defs><marker id="la" markerWidth="12" markerHeight="9" refX="10" refY="4.5" orient="auto">
+          <polygon points="0 0, 12 4.5, 0 9" fill="#ffd54a"/>
+        </marker></defs>
+
+        <!-- 中心 -->
+        <circle cx="450" cy="150" r="52" fill="rgba(255,213,74,0.2)" stroke="#ffd54a" stroke-width="2"/>
+        <text x="450" y="143" text-anchor="middle" fill="#ffd54a" font-size="17" font-weight="bold">Roguelite</text>
+        <text x="450" y="167" text-anchor="middle" fill="#ffd54a" font-size="17" font-weight="bold">循环</text>
+
+        <!-- 商店（上） -->
+        <g class="loop-node">
+          <rect x="360" y="14" width="180" height="64" rx="14" fill="#38ef7d" opacity="0.85"/>
+          <text x="450" y="41" text-anchor="middle" fill="#08402a" font-size="16" font-weight="bold">🏪 商店</text>
+          <text x="450" y="63" text-anchor="middle" fill="#08402a" font-size="12.5">花金币买升级</text>
+        </g>
+        <path d="M 450 78 L 450 92" stroke="#ffd54a" stroke-width="4" marker-end="url(#la)"/>
+
+        <!-- 地牢（下） -->
+        <g class="loop-node">
+          <rect x="360" y="222" width="180" height="64" rx="14" fill="#4facfe" opacity="0.85"/>
+          <text x="450" y="249" text-anchor="middle" fill="#fff" font-size="16" font-weight="bold">🏰 地牢</text>
+          <text x="450" y="271" text-anchor="middle" fill="#fff" font-size="12.5">战斗 · 探索 · 捡金币</text>
+        </g>
+        <path d="M 450 218 L 450 204" stroke="#ffd54a" stroke-width="4" marker-end="url(#la)"/>
+
+        <!-- 进入（右路） -->
+        <path d="M 540 46 C 680 60, 700 120, 560 138" stroke="#a8e063" stroke-width="4" fill="none" marker-end="url(#la)"/>
+        <text x="665" y="85" text-anchor="middle" fill="#a8e063" font-size="13.5" font-weight="bold">带着升级进入</text>
+
+        <!-- 死亡（左路） -->
+        <path d="M 340 240 C 200 225, 190 165, 340 148" stroke="#f5576c" stroke-width="4" fill="none" marker-end="url(#la)"/>
+        <text x="235" y="215" text-anchor="middle" fill="#f5576c" font-size="13.5" font-weight="bold">💀 死亡掉 30%</text>
+        <text x="235" y="235" text-anchor="middle" fill="#f093fb" font-size="12.5">金币带回商店</text>
+      </svg>
+      <p style="text-align:center; font-size:17px; margin-top:10px; opacity:.9">
+        每跑一圈：<b>地牢给你金币，商店给你力量</b>——下一圈就能走得更深。
+      </p>
+    </div>
+
+    <!-- ================= GameData ================= -->
+    <h2>🧠 GameData：不说话的会计</h2>
+    <div class="card">
+      <svg viewBox="0 0 900 190" style="width: 100%;" class="loop-svg">
+        <defs><marker id="la2" markerWidth="12" markerHeight="9" refX="10" refY="4.5" orient="auto">
+          <polygon points="0 0, 12 4.5, 0 9" fill="#ffd54a"/>
+        </marker></defs>
+
+        <g class="loop-node">
+          <rect x="30" y="45" width="180" height="100" rx="14" fill="#4facfe" opacity="0.85"/>
+          <text x="120" y="85" text-anchor="middle" fill="#fff" font-size="16" font-weight="bold">🏪 商店场景</text>
+          <text x="120" y="112" text-anchor="middle" fill="#fff" font-size="12.5">买升级 · 扣金币</text>
+        </g>
+        <path d="M 210 95 L 320 95" stroke="#ffd54a" stroke-width="4" marker-end="url(#la2)"/>
+        <path d="M 320 115 L 210 115" stroke="#ffd54a" stroke-width="4" marker-end="url(#la2)"/>
+
+        <g class="loop-node">
+          <rect x="330" y="30" width="240" height="130" rx="16" fill="#ffd54a" opacity="0.92"/>
+          <text x="450" y="62" text-anchor="middle" fill="#5a3a00" font-size="17" font-weight="bold">🧠 GameData</text>
+          <text x="450" y="90" text-anchor="middle" fill="#5a3a00" font-size="13">Autoload 全局单例</text>
+          <text x="450" y="115" text-anchor="middle" fill="#5a3a00" font-size="12.5" font-family="Consolas">/root/GameData</text>
+          <text x="450" y="140" text-anchor="middle" fill="#5a3a00" font-size="12.5">场景切换也不会消失</text>
+        </g>
+        <path d="M 570 95 L 680 95" stroke="#ffd54a" stroke-width="4" marker-end="url(#la2)"/>
+        <path d="M 680 115 L 570 115" stroke="#ffd54a" stroke-width="4" marker-end="url(#la2)"/>
+
+        <g class="loop-node">
+          <rect x="690" y="45" width="180" height="100" rx="14" fill="#f093fb" opacity="0.85"/>
+          <text x="780" y="85" text-anchor="middle" fill="#fff" font-size="16" font-weight="bold">🏰 地牢场景</text>
+          <text x="780" y="112" text-anchor="middle" fill="#fff" font-size="12.5">捡金币 · 死亡惩罚</text>
+        </g>
+      </svg>
+      <div class="gd-grid" style="margin-top:16px;">
+        <div class="gd-box bad">
+          <h3>❌ 以前：存档在地牢里</h3>
+          <p>商店想看金币？<br><code>Main._save_game()</code> 是别人家的私有账本——<b>访问不到</b></p>
+        </div>
+        <div class="gd-box good">
+          <h3>✓ 现在：会计独立办公</h3>
+          <p>金币/纪录/升级等级全在 <code>GameData</code><br>谁都能读写：<code>GameData.gold</code> <code>GameData.TryBuy()</code></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= 商店演示 ================= -->
+    <h2>🎮 亲手开一家商店</h2>
+    <div class="card">
+      <div class="shop-wrap">
+        <div class="shop-panel">
+          <div class="shop-title">🏪 冒险者商店</div>
+          <div class="shop-gold">🪙 金币：<span id="gold">25</span></div>
+          <button class="shop-btn btn-hp" id="btnHp" onclick="buy('hp')">❤️ 最大生命 +1</button>
+          <button class="shop-btn btn-atk" id="btnAtk" onclick="buy('atk')">⚔️ 攻击伤害 +1</button>
+          <button class="shop-btn btn-spd" id="btnSpd" onclick="buy('spd')">👟 移动速度 +10%</button>
+          <button class="shop-btn btn-start" onclick="enterDungeon()">⚔️ 进入地牢</button>
+          <div class="shop-tip">金币不够的按钮自动变灰（disabled = not can_afford）</div>
+        </div>
+        <div class="stat-panel">
+          <div class="stat-row" id="rowHp">
+            <div><div class="name">❤️ 生命上限</div><div class="stat-lv" id="lvHp">Lv.0（基础 3）</div></div>
+            <div class="val hp" id="vHp">3</div>
+          </div>
+          <div class="stat-row" id="rowAtk">
+            <div><div class="name">⚔️ 攻击伤害</div><div class="stat-lv" id="lvAtk">Lv.0（基础 1）</div></div>
+            <div class="val atk" id="vAtk">1</div>
+          </div>
+          <div class="stat-row" id="rowSpd">
+            <div><div class="name">👟 移动速度</div><div class="stat-lv" id="lvSpd">Lv.0（基础 140）</div></div>
+            <div class="val spd" id="vSpd">140</div>
+          </div>
+          <div style="font-size:13px; opacity:0.8; text-align:center;">
+            这就是 apply_upgrades() 的产物：<br>基础值 + 商店等级 = 最终属性
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= 价格曲线 ================= -->
+    <h2>📈 为什么升级越来越贵</h2>
+    <div class="card">
+      <svg viewBox="0 0 900 210" style="width: 100%;" class="price-svg">
+        <!-- 坐标 -->
+        <line x1="60" y1="180" x2="860" y2="180" stroke="rgba(255,255,255,0.4)" stroke-width="2"/>
+        <line x1="60" y1="180" x2="60" y2="20" stroke="rgba(255,255,255,0.4)" stroke-width="2"/>
+
+        <!-- 线性柱：生命 10,20,30,40,50 -->
+        <g>
+          <rect x="100" y="168" width="34" height="12" fill="#f5576c"/>
+          <rect x="160" y="156" width="34" height="24" fill="#f5576c"/>
+          <rect x="220" y="144" width="34" height="36" fill="#f5576c"/>
+          <rect x="280" y="132" width="34" height="48" fill="#f5576c"/>
+          <rect x="340" y="120" width="34" height="60" fill="#f5576c"/>
+          <text x="237" y="60" text-anchor="middle" fill="#f093fb" font-size="14" font-weight="bold">❤️ 生命：10 + Lv×10</text>
+          <text x="237" y="80" text-anchor="middle" fill="#ccc" font-size="12">线性——每级稳定变贵</text>
+          <text x="117" y="198" text-anchor="middle" fill="#aaa" font-size="11">Lv0</text>
+          <text x="357" y="198" text-anchor="middle" fill="#aaa" font-size="11">Lv4</text>
+        </g>
+
+        <!-- 指数曲线（作业4） -->
+        <g>
+          <path d="M 560 168 C 640 164, 700 140, 750 100 C 780 72, 800 48, 815 30" stroke="#ffd54a" stroke-width="3.5" fill="none" stroke-dasharray="7 5"/>
+          <text x="690" y="55" text-anchor="middle" fill="#ffd54a" font-size="14" font-weight="bold">作业 4：指数版 10 × 1.5^Lv</text>
+          <text x="690" y="76" text-anchor="middle" fill="#ccc" font-size="12">后期一等级 = 前面好几级之和</text>
+        </g>
+
+        <text x="450" y="30" text-anchor="middle" fill="#fff" font-size="15" font-weight="bold">防止玩家一夜变强：越买越贵是 roguelite 的标配曲线</text>
+      </svg>
+    </div>
+
+    <!-- ================= 改造清单 ================= -->
+    <h2>🛠️ 这次给游戏动了什么手术</h2>
+    <div class="card">
+      <div class="hw-grid">
+        <div class="hw-card">
+          <span class="hw-num">新增</span>
+          <span class="hw-icon">🧠</span>
+          <div class="hw-name">GameData</div>
+          <div class="hw-desc">Autoload 全局单例——金币/纪录/升级的真源 + 存档</div>
+        </div>
+        <div class="hw-card">
+          <span class="hw-num">新增</span>
+          <span class="hw-icon">🏪</span>
+          <div class="hw-name">商店场景</div>
+          <div class="hw-desc">三类升级按钮 + 进入地牢；买不起自动变灰</div>
+        </div>
+        <div class="hw-card">
+          <span class="hw-num">迁移</span>
+          <span class="hw-icon">📦</span>
+          <div class="hw-name">存档搬家</div>
+          <div class="hw-desc">第 10 课的存档从 Main 迁到 GameData；旧档兼容（升级默认 Lv.0）</div>
+        </div>
+        <div class="hw-card">
+          <span class="hw-num">改造</span>
+          <span class="hw-icon">💀</span>
+          <div class="hw-name">死亡回商店</div>
+          <div class="hw-desc">死亡不再原地重开——惩罚结算后切回商店场景</div>
+        </div>
+        <div class="hw-card">
+          <span class="hw-num">改造</span>
+          <span class="hw-icon">🧙</span>
+          <div class="hw-name">玩家属性</div>
+          <div class="hw-desc">base_* 基础值 + 商店等级 = 最终属性（进图自动应用）</div>
+        </div>
+      </div>
+      <p style="text-align:center; margin-top:14px; opacity:.85; font-size:14.5px">
+        ⚙️ 主场景改为商店——游戏从「开店」开始，而不是直接掉进地牢
+      </p>
+    </div>
+
+    <!-- ================= 作业讲解 ================= -->
+    <h2>📝 五个作业，逐个拆解</h2>
+    <div class="card">
+      <div class="hw-grid">
+        <div class="hw-card">
+          <span class="hw-num">No.1</span>
+          <span class="hw-icon">🧪</span>
+          <div class="hw-name">恢复生命商品</div>
+          <div class="hw-desc">20 金币带一瓶药水进图</div>
+          <div class="hw-idea">💡 GameData 加 carried_potions 计数；Main 生成玩家时注入——一次性消耗品与永久升级并存</div>
+        </div>
+        <div class="hw-card recommend">
+          <span class="stamp">推荐先做</span>
+          <span class="hw-num">No.2</span>
+          <span class="hw-icon">⏸️</span>
+          <div class="hw-name">死亡提示界面</div>
+          <div class="hw-desc">「你死了 / 损失 30% / 按任意键回商店」</div>
+          <div class="hw-idea">💡 扩展第 8 课 DeathLabel：加副标题 + 按键等待——比定时切场景更有仪式感</div>
+        </div>
+        <div class="hw-card">
+          <span class="hw-num">No.3</span>
+          <span class="hw-icon">➕</span>
+          <div class="hw-name">更多升级</div>
+          <div class="hw-desc">范围/冷却/药效/掉落率/暴击</div>
+          <div class="hw-idea">💡 GameData 加等级变量 + 玩家侧消费——纯数据扩展，架构已就绪</div>
+        </div>
+        <div class="hw-card recommend">
+          <span class="stamp">推荐先做</span>
+          <span class="hw-num">No.4</span>
+          <span class="hw-icon">📈</span>
+          <div class="hw-name">价格指数增长</div>
+          <div class="hw-desc">10 × 1.5^Lv 替代线性</div>
+          <div class="hw-idea">💡 改 get_upgrade_cost 一行公式；曲线后期陡升，逼玩家取舍（见上图虚线）</div>
+        </div>
+        <div class="hw-card">
+          <span class="hw-num">No.5</span>
+          <span class="hw-icon">🎲</span>
+          <div class="hw-name">商店刷新</div>
+          <div class="hw-desc">每局随机折扣/稀有升级</div>
+          <div class="hw-idea">💡 进阶：随机商品池——为第 16 课技能树埋伏笔，可暂缓</div>
+        </div>
+      </div>
+      <p style="text-align:center; margin-top:16px; opacity:.85; font-size:15px">
+        按惯例一次做 1~2 个：推荐 <b>作业 2 + 4</b>（死亡体验闭环 + 经济曲线）。
+      </p>
+    </div>
+
+    <!-- ================= Takeaway ================= -->
+    <div class="takeaway">
+      <span class="icon">💡</span>
+      Autoload 单例 = 游戏世界的「公共账本」。<br>
+      场景可以换，账本永远在——这就是商店、地牢、未来所有场景共享数据的钥匙。
+    </div>
+
+  </div>
+
+  <script>
+    // ===== 商店演示（模拟 GameData 逻辑）=====
+    var G = { gold: 25, hpLv: 0, atkLv: 0, spdLv: 0 };
+    var COST = {
+      hp:  function() { return 10 + G.hpLv * 10; },
+      atk: function() { return 15 + G.atkLv * 15; },
+      spd: function() { return 12 + G.spdLv * 12; }
+    };
+
+    function render(flashRow) {
+      document.getElementById('gold').textContent = G.gold;
+
+      var btns = { hp: 'btnHp', atk: 'btnAtk', spd: 'btnSpd' };
+      var labels = {
+        hp:  function(lv) { return '❤️ 最大生命 +1（Lv.' + lv + ' → ' + (lv + 1) + '）　花费：' + COST.hp(); },
+        atk: function(lv) { return '⚔️ 攻击伤害 +1（Lv.' + lv + ' → ' + (lv + 1) + '）　花费：' + COST.atk(); },
+        spd: function(lv) { return '👟 移动速度 +10%（Lv.' + lv + ' → ' + (lv + 1) + '）　花费：' + COST.spd(); }
+      };
+
+      ['hp', 'atk', 'spd'].forEach(function(t) {
+        var b = document.getElementById(btns[t]);
+        var lv = G[t + 'Lv'];
+        b.textContent = labels[t](lv);
+        b.disabled = G.gold < COST[t]();
+      });
+
+      document.getElementById('vHp').textContent = 3 + G.hpLv;
+      document.getElementById('vAtk').textContent = 1 + G.atkLv;
+      document.getElementById('vSpd').textContent = Math.round(140 * (1 + G.spdLv * 0.1));
+      document.getElementById('lvHp').textContent = 'Lv.' + G.hpLv + '（基础 3）';
+      document.getElementById('lvAtk').textContent = 'Lv.' + G.atkLv + '（基础 1）';
+      document.getElementById('lvSpd').textContent = 'Lv.' + G.spdLv + '（基础 140）';
+
+      if (flashRow) {
+        var r = document.getElementById('row' + flashRow);
+        r.classList.remove('bought'); void r.offsetWidth; r.classList.add('bought');
+      }
+    }
+
+    function buy(type) {
+      var cost = COST[type]();
+      if (G.gold < cost) return;   // try_buy 失败
+      G.gold -= cost;
+      G[type + 'Lv'] += 1;          // 等级 +1
+      render(type.toUpperCase());   // save_game() + update_ui()
+    }
+
+    function enterDungeon() {
+      // 演示：模拟跑一圈——地牢随机捡 8~20 金币，死亡掉 30% 回商店
+      var earned = 8 + Math.floor(Math.random() * 13);
+      G.gold += earned;
+      G.gold = Math.floor(G.gold * 0.7);
+      render();
+      alert('⚔️ 冒险归来！\n\n地牢捡到 ' + earned + ' 金币\n死亡惩罚保留 70%\n\n回来继续变强吧～');
+    }
+
+    render();
+  </script>
+</body>
+</html>
