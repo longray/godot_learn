@@ -244,10 +244,12 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func generate() -> void:
 	# 第 12 课：消费商店的测试跳层（>0 时覆盖起始层；消费即清零——出口/死亡流程不受影响）
+	var debug_jump := false
 	var game_data := get_node_or_null("/root/GameData")
 	if game_data and int(game_data.get("debug_start_floor")) > 0:
 		floor_number = int(game_data.get("debug_start_floor"))
 		game_data.set("debug_start_floor", 0)
+		debug_jump = true
 		print("【测试】跳层进入：第 ", floor_number, " 层")
 
 	# 防止地图太小
@@ -301,6 +303,17 @@ func generate() -> void:
 	if debug_print_path:
 		print("入口：", entrance_cell, "  出口：", exit_cell)
 		print("钥匙：", key_cell, "  宝箱数：", treasure_cells.size(), "  怪物数：", monster_cells.size())
+
+	# 测试跳层：报告本图精英数（不用满图找——没精英再跳一次即可）
+	if debug_jump:
+		var elite_total := 0
+		var monster_total := 0
+		for e in dynamic_entities:
+			if e is CharacterBody2D and e.get("enemy_type") != null:
+				monster_total += 1
+				if bool(e.get("is_elite")):
+					elite_total += 1
+		print("【测试】本层怪物 ", monster_total, " 只，其中精英 ", elite_total, " 只（25%/只——没刷出再跳一次）")
 
 
 # =========================
