@@ -133,6 +133,12 @@ var _look_dir := 1.0
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var alert: Sprite2D = $Alert
 
+# 作业 1（第 12 课）：精英星标（常驻头顶，与 Alert 叹号错位 -21/-14 不打架）
+@onready var elite_star: Sprite2D = $EliteStar
+# 作业 2（第 12 课）：受击血条（满血隐藏；Fill 以左端为轴向右缩）
+@onready var health_bar: ColorRect = $HealthBar
+@onready var health_bar_fill: ColorRect = $HealthBar/Fill
+
 # 作业 3（第 7 课）：警报叹号剩余显示时间（>0 显示，_start_chase 触发）
 var _alert_t: float = 0.0
 
@@ -178,6 +184,10 @@ func _process(delta: float) -> void:
 	if _alert_t > 0.0:
 		_alert_t -= delta
 		alert.visible = _alert_t > 0.0
+
+	# 作业 1（第 12 课）：精英星标常驻（每帧同步——与 modulate 同模式，
+	# 规避"add_child 后 @onready 未就绪"的无头时序问题）
+	elite_star.visible = is_elite
 
 	# 张望：等待中偶尔左右瞥一眼（身体微偏移模拟探头）
 	if _look_t > 0.0:
@@ -256,6 +266,9 @@ func apply_config(config: Dictionary) -> void:
 	speed *= randf_range(0.85, 1.15)
 	chase_speed = speed * chase_speed_multiplier
 
+	# 血条按新 max_health 重算（满血则隐藏）
+	_update_health_bar()
+
 	# 第 7 课：AI 状态复位
 	state = EnemyState.PATROL
 	is_chasing = false
@@ -318,12 +331,28 @@ func take_damage(amount: int, source_position: Vector2 = Vector2.ZERO) -> void:
 
 	print("敌人受击，剩余生命：", health)
 
+	_update_health_bar()
+
 	if health <= 0:
 		dead = true
 		_die()
 		return
 
 	_flash_t = 0.12
+
+
+func _update_health_bar() -> void:
+	# 作业 2（第 12 课）：满血/死亡隐藏，受伤才显示（一眼读出"这怪打过几下"）
+	# 防御：无头 add_child 后 @onready 可能未赋值（消息队列未刷新）
+	if not is_instance_valid(health_bar) or not is_instance_valid(health_bar_fill):
+		return
+
+	if dead or health <= 0 or health >= max_health:
+		health_bar.visible = false
+		return
+
+	health_bar.visible = true
+	health_bar_fill.scale.x = clampf(float(health) / float(max_health), 0.0, 1.0)
 
 
 func _die() -> void:
