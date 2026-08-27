@@ -40,7 +40,12 @@ public partial class Hud : CanvasLayer
 	private ColorRect _hurtOverlay = null!;
 	private Label _deathLabel = null!;
 
-	private bool _deathShowing;
+	// 作业 2（第 11 课）：死亡提示副标题（损失比例 + 按键提示）
+	private Label _deathHintLabel = null!;
+
+	// 死亡提示会话令牌：新 ShowDeath/HideDeath 使挂起中的旧协程失效
+	// （防旧协程 1.2s 后恢复时误关持续模式的新大字）
+	private int _deathToken;
 
 	public override void _Ready()
 	{
@@ -55,6 +60,7 @@ public partial class Hud : CanvasLayer
 		_keyIcon = GetNode<TextureRect>("VBoxContainer/KeyRow/KeyIcon");
 		_hurtOverlay = GetNode<ColorRect>("HurtOverlay");
 		_deathLabel = GetNode<Label>("DeathLabel");
+		_deathHintLabel = GetNode<Label>("DeathHintLabel");
 	}
 
 	public override void _Process(double delta)
@@ -153,20 +159,47 @@ public partial class Hud : CanvasLayer
 		_hurtOverlay.Color = new Color(c.R, c.G, c.B, HurtFlashAlpha);
 	}
 
-	public async void ShowDeath()
+	public async void ShowDeath(string hintText = "", bool autoHide = true)
 	{
-		// 作业 5：死亡大字，居中弹出 DeathShowTime 秒后隐藏
-		// _deathShowing 守卫：连续死亡时避免两个并发协程互相提前关灯
-		if (_deathShowing)
+		// 作业 5（第 8 课）：死亡大字
+		// 作业 2（第 11 课）：autoHide=false 持续显示（死亡等按键回商店，场景切换时随 HUD 销毁）；
+		// hintText 非空时副标题同步显示（损失比例提示）
+		int myToken = ++_deathToken;
+
+		_deathLabel.Visible = true;
+
+		if (hintText != "" && _deathHintLabel != null)
+		{
+			_deathHintLabel.Text = hintText;
+			_deathHintLabel.Visible = true;
+		}
+
+		if (!autoHide)
 		{
 			return;
 		}
 
-		_deathShowing = true;
-		_deathLabel.Visible = true;
 		await ToSignal(GetTree().CreateTimer(DeathShowTime), SceneTreeTimer.SignalName.Timeout);
+
+		// 会话已被更新的 Show/Hide 取代——不再动界面
+		if (myToken != _deathToken)
+		{
+			return;
+		}
+
+		HideDeath();
+	}
+
+	public void HideDeath()
+	{
+		// 隐藏大字与副标题；递增令牌作废所有挂起中的旧协程
+		_deathToken++;
 		_deathLabel.Visible = false;
-		_deathShowing = false;
+
+		if (_deathHintLabel != null)
+		{
+			_deathHintLabel.Visible = false;
+		}
 	}
 
 	private void SyncHeartCount(int count)

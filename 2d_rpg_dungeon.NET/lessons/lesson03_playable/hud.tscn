@@ -8,6 +8,7 @@
 [ext_resource type="Script" path="res://lessons/lesson03_playable/MiniMap.cs" id="6_minimap"]
 
 [node name="HUD" type="CanvasLayer"]
+process_mode = 3
 script = ExtResource("1_hud")
 
 [node name="VBoxContainer" type="VBoxContainer" parent="."]
@@ -99,6 +100,24 @@ theme_override_colors/font_color = Color(1, 0.3, 0.3, 1)
 horizontal_alignment = 1
 vertical_alignment = 1
 text = "你死了"
+mouse_filter = 2
+visible = false
+
+[node name="DeathHintLabel" type="Label" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -280.0
+offset_top = 40.0
+offset_right = 280.0
+offset_bottom = 74.0
+theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(1, 0.75, 0.75, 1)
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "损失 30% 金币 · 按任意键返回商店"
 mouse_filter = 2
 visible = false
 

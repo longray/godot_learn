@@ -11,8 +11,12 @@ config_version=5
 [application]
 
 config/name="2D RPG Dungeon (C#)"
-run/main_scene="res://lessons/lesson03_playable/lesson03.tscn"
+run/main_scene="res://lessons/lesson03_playable/shop.tscn"
 config/features=PackedStringArray("4.7", "C#", "GL Compatibility")
+
+[autoload]
+
+GameData="*res://lessons/lesson03_playable/GameData.cs"
 
 [dotnet]
 

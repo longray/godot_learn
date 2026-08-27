@@ -125,12 +125,15 @@ public partial class DungeonPlayable : Node2D
 	// 第 8 课：层数（出口进入下一层 +1；金币跨层保留，钥匙/宝箱/生命每层重置）
 	public int FloorNumber { get; private set; } = 1;
 
-	// 第 10 课：长期数据（跨局保存在 user:// 存档）
+	// 第 10 课：长期数据 → 第 11 课降级为局内镜像（真源与存档职责已迁至 GameData Autoload）
 	public int BestFloor { get; private set; } = 1;
 	public int TotalDeaths { get; private set; }
 
-	// 第 10 课：存档路径（user:// = 各平台用户数据目录，勿写 res://）
-	private const string SavePath = "user://rpg_dungeon_save.json";
+	// 第 11 课：死亡结算后返回商店（游戏主循环：商店 → 地牢 → 死亡 → 商店）
+	private const string ShopScene = "res://lessons/lesson03_playable/shop.tscn";
+
+	// 作业 2（第 11 课）：死亡等待按键状态（true 时拦截 R/Backspace，任意键回商店）
+	private bool _deathAwaitingInput;
 
 	// ---------- 节点 ----------
 
@@ -212,8 +215,19 @@ public partial class DungeonPlayable : Node2D
 
 	public override void _Ready()
 	{
-		// 第 10 课：启动先读档（金币/最佳层数/死亡次数——没有存档则保持默认值）
-		LoadGame();
+		// 第 11 课作业 2：死亡等待期暂停世界（GetTree().Paused）——
+		// Main 必须永不停摆，否则暂停后收不到"任意键返回商店"
+		ProcessMode = ProcessModeEnum.Always;
+
+		// 第 11 课：存档职责迁至 GameData——启动时已 LoadGame，这里拉取镜像
+		var gameData = GetNodeOrNull<GameData>("/root/GameData");
+
+		if (gameData != null)
+		{
+			GoldCount = gameData.Gold;
+			BestFloor = gameData.BestFloor;
+			TotalDeaths = gameData.TotalDeaths;
+		}
 
 		_tileLayer = GetNode<TileMapLayer>("TileMapLayer");
 		_pathOverlay = GetNodeOrNull<PathOverlay>("PathOverlay");
@@ -231,15 +245,30 @@ public partial class DungeonPlayable : Node2D
 
 	public override void _UnhandledInput(InputEvent @event)
 	{
-		if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.R })
+		if (@event is not InputEventKey { Pressed: true, Echo: false } key)
+		{
+			return;
+		}
+
+		// 作业 2（第 11 课）：死亡等待——任意按键返回商店（优先拦截 R/Backspace，防等待期误操作）
+		if (_deathAwaitingInput)
+		{
+			_deathAwaitingInput = false;
+			// 先解除暂停再切场景——否则商店会继承 Paused 状态整个冻住
+			GetTree().Paused = false;
+			GetTree().ChangeSceneToFile(ShopScene);
+			return;
+		}
+
+		if (key.Keycode == Key.R)
 		{
 			Generate();
 		}
 
-		// 作业 3（第 10 课）：Backspace 删档重开（调试用——清空金币/最佳层数/死亡次数）
-		if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Backspace })
+		// 作业 3（第 10 课）：Backspace 删档重开（调试用——清空金币/纪录/升级等级）
+		if (key.Keycode == Key.Backspace)
 		{
-			DeleteSave();
+			GetNodeOrNull<GameData>("/root/GameData")?.ResetProgress();
 			GoldCount = 0;
 			BestFloor = 1;
 			TotalDeaths = 0;
@@ -942,7 +971,7 @@ public partial class DungeonPlayable : Node2D
 			FloorNumber++;
 			// 第 10 课：更新最佳层数并保存（下楼即存档，随时关机不亏）
 			BestFloor = Mathf.Max(BestFloor, FloorNumber);
-			SaveGame();
+			SyncGameData();
 			// 物理回调中不能直接改场景树，延迟到帧末安全执行
 			CallDeferred(MethodName.Generate);
 		}
@@ -1599,7 +1628,7 @@ public partial class DungeonPlayable : Node2D
 				GD.Print("捡到金币，当前金币：", GoldCount);
 				UpdateGoldHud();
 				// 第 10 课：捡到金币立刻存档（长期数据即时落盘）
-				SaveGame();
+				SyncGameData();
 			}
 			else if (dropType == "potion")
 			{
@@ -1915,13 +1944,29 @@ public partial class DungeonPlayable : Node2D
 			}
 		}
 
-		SaveGame();
+		SyncGameData();
 		UpdateGoldHud();
 		// 金币惩罚后 HUD 必须单独刷金币行（UpdateHud 不覆盖 gold_label）
 		UpdateHud();
 
-		// 固定种子 + DeathResetsRun=false = 第 5 课本层复原；否则换新图/新局
-		Generate();
+		if (DeathResetsRun)
+		{
+			// 第 11 课 + 作业 2：暂停世界 + 死亡大字持续显示，等玩家按键再回商店
+			// （暂停是关键——否则等待期怪物继续围殴无敌已结束的玩家，无限连死蒸发金币）
+			int lostPct = (int)Mathf.Round((1.0f - DeathGoldKeepRatio) * 100.0f);
+			_hud?.ShowDeath($"损失 {lostPct}% 金币 · 按任意键返回商店", false);
+
+			// 踩坑：SceneTreeTimer 的 ProcessAlways 默认 true——Paused 下照走！
+			// 无敌 1.2s 到期照常解除。等待期防线 = Player.TakeDamage 里检查
+			// GetTree().Paused 短路（世界暂停=伤害无效）
+			GetTree().Paused = true;
+			_deathAwaitingInput = true;
+		}
+		else
+		{
+			// 轻模式（DeathResetsRun=false）：保留第 10 课行为——固定种子下本层复原
+			Generate();
+		}
 	}
 
 	private void OnPlayerHealthChanged(int currentHealth, int maxHealth)
@@ -1940,80 +1985,34 @@ public partial class DungeonPlayable : Node2D
 	private void OnPlayerDied()
 	{
 		// 作业 5（第 8 课）：死亡 → HUD 大字提示
-		_hud?.ShowDeath();
+		// 第 11 课作业 2 修复：大字职责单一化——回商店路径的持续版大字由
+		// ResetCurrentLayer 触发；本转发只在轻死亡（本层复原）时走 1.2s 自动隐藏版，
+		// 否则两版打架（旧版 1.2s 后 HideDeath 误关持续版大字）
+		if (!DeathResetsRun)
+		{
+			_hud?.ShowDeath();
+		}
 	}
 
 	// =========================
-	// 第 10 课：存档（长期数据：金币/最佳层数/死亡次数）
+	// 第 10 课：存档 → 第 11 课迁至 GameData；Main 只做镜像同步
 	// =========================
 
-	private void SaveGame()
+	private void SyncGameData()
 	{
-		// JSON 明文存档——可读可调试；局内状态（地图/钥匙/迷雾）不保存，每局从第 1 层开始
-		var data = new Godot.Collections.Dictionary
-		{
-			["gold"] = GoldCount,
-			["best_floor"] = BestFloor,
-			["total_deaths"] = TotalDeaths,
-		};
+		// 镜像 → 真源：长期数据变化时同步 GameData 并落盘
+		var gameData = GetNodeOrNull<GameData>("/root/GameData");
 
-		using FileAccess file = FileAccess.Open(SavePath, FileAccess.ModeFlags.Write);
-
-		if (file == null)
-		{
-			GD.PushWarning("无法打开存档文件进行写入。");
-			return;
-		}
-
-		file.StoreString(Json.Stringify(data, "  "));
-	}
-
-	private void LoadGame()
-	{
-		// 无存档 = 首次运行，保持默认值即可
-		if (!FileAccess.FileExists(SavePath))
+		if (gameData == null)
 		{
 			return;
 		}
 
-		using FileAccess file = FileAccess.Open(SavePath, FileAccess.ModeFlags.Read);
+		gameData.Gold = GoldCount;
+		gameData.BestFloor = BestFloor;
+		gameData.TotalDeaths = TotalDeaths;
 
-		if (file == null)
-		{
-			GD.PushWarning("无法打开存档文件。");
-			return;
-		}
-
-		var json = new Json();
-		Error error = json.Parse(file.GetAsText());
-
-		if (error != Error.Ok)
-		{
-			GD.PushWarning("存档解析失败。");
-			return;
-		}
-
-		if (json.Data.VariantType != Variant.Type.Dictionary)
-		{
-			GD.PushWarning("存档格式错误。");
-			return;
-		}
-
-		var data = json.Data.AsGodotDictionary();
-
-		// Get 缺省值兜底：旧版本存档缺字段也不崩（Godot.Dictionary 无 GetValueOr，手写同语义）
-		GoldCount = data.ContainsKey("gold") ? (int)(double)data["gold"] : GoldCount;
-		BestFloor = data.ContainsKey("best_floor") ? (int)(double)data["best_floor"] : BestFloor;
-		TotalDeaths = data.ContainsKey("total_deaths") ? (int)(double)data["total_deaths"] : TotalDeaths;
-	}
-
-	public void DeleteSave()
-	{
-		// 作业 3 预留入口（调试删档）；无存档时静默通过
-		if (FileAccess.FileExists(SavePath))
-		{
-			DirAccess.RemoveAbsolute(SavePath);
-		}
+		gameData.SaveGame();
 	}
 
 	// =========================

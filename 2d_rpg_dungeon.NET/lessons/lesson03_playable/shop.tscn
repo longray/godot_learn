@@ -1,0 +1,57 @@
+[gd_scene format=3 uid="uid://bshop11k4w1c"]
+
+[ext_resource type="Script" path="res://lessons/lesson03_playable/Shop.cs" id="1_shop"]
+
+[node name="Shop" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_shop")
+
+[node name="Background" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.0666667, 0.0705882, 0.0941176, 1)
+
+[node name="MarginContainer" type="MarginContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+theme_override_constants/margin_left = 40
+theme_override_constants/margin_top = 40
+theme_override_constants/margin_right = 40
+theme_override_constants/margin_bottom = 40
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+alignment = 1
+theme_override_constants/separation = 14.0
+
+[node name="TitleLabel" type="Label" parent="MarginContainer/VBoxContainer"]
+theme_override_font_sizes/font_size = 34
+horizontal_alignment = 1
+text = "🏪 冒险者商店"
+
+[node name="GoldLabel" type="Label" parent="MarginContainer/VBoxContainer"]
+theme_override_font_sizes/font_size = 22
+horizontal_alignment = 1
+text = "金币：0"
+
+[node name="HealthButton" type="Button" parent="MarginContainer/VBoxContainer"]
+theme_override_font_sizes/font_size = 18
+text = "最大生命 +1"
+
+[node name="AttackButton" type="Button" parent="MarginContainer/VBoxContainer"]
+theme_override_font_sizes/font_size = 18
+text = "攻击伤害 +1"
+
+[node name="SpeedButton" type="Button" parent="MarginContainer/VBoxContainer"]
+theme_override_font_sizes/font_size = 18
+text = "移动速度 +10%"
+
+[node name="StartButton" type="Button" parent="MarginContainer/VBoxContainer"]
+theme_override_font_sizes/font_size = 22
+text = "⚔️ 进入地牢"

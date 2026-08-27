@@ -21,7 +21,10 @@ public partial class Player : CharacterBody2D
 	[Signal]
 	public delegate void DiedEventHandler();
 
-	[Export] public float Speed { get; set; } = 140.0f;
+	// 第 11 课：基础属性（商店永久升级在此之上叠加；调平衡改这三个）
+	[Export] public int BaseMaxHealth { get; set; } = 3;
+	[Export] public float BaseSpeed { get; set; } = 140.0f;
+	[Export] public int BaseAttackDamage { get; set; } = 1;
 
 	// 作业 5：移动阻挡方式开关（运行时对比手感用）
 	// true  = 真实物理碰撞：穿墙由 TileSet 物理层的碰撞体阻止（MoveAndSlide 解算）
@@ -40,14 +43,14 @@ public partial class Player : CharacterBody2D
 	// 第 5 课：生命与受伤
 	// =========================
 
-	[Export] public int MaxHealth { get; set; } = 3;
+	// 第 5 课：受伤参数（MaxHealth 由 ApplyUpgrades 计算，不再是 [Export]）
 	[Export] public float InvincibilityTime { get; set; } = 0.8f;
 
 	// =========================
 	// 第 6 课：攻击（临时 Area2D 方案——生成→存在 0.08s→销毁）
 	// =========================
 
-	[Export] public int AttackDamage { get; set; } = 1;
+	// AttackDamage 由 ApplyUpgrades 计算，不再是 [Export]
 	[Export] public float AttackCooldown { get; set; } = 0.35f;
 	[Export] public float AttackDuration { get; set; } = 0.08f;
 	[Export] public float AttackRadius { get; set; } = 12.0f;
@@ -59,6 +62,11 @@ public partial class Player : CharacterBody2D
 	public int Health { get; private set; } = 3;
 	public bool Invincible { get; private set; }
 	public Vector2 Knockback { get; private set; }
+
+	// 第 11 课：最终属性 = Base* + GameData 永久等级（ApplyUpgrades 每次进图/换层刷新）
+	public int MaxHealth { get; private set; } = 3;
+	public float Speed { get; private set; } = 140.0f;
+	public int AttackDamage { get; private set; } = 1;
 
 	// 朝向（动画用随移动；攻击朝向独立——鼠标指哪砍哪）
 	public Vector2 Facing { get; private set; } = Vector2.Right;
@@ -86,6 +94,10 @@ public partial class Player : CharacterBody2D
 	{
 		_sprite = GetNode<Sprite2D>("Sprite2D");
 		_camera = GetNode<Camera2D>("Camera2D");
+
+		// 第 11 课：先应用商店升级再取生命（顺序反了当前血不会满——文档问题 5 的坑）
+		ApplyUpgrades();
+
 		Health = MaxHealth;
 
 		// 第 8 课：初始生命广播（Main 连接后 HUD 显示满心）
@@ -94,12 +106,33 @@ public partial class Player : CharacterBody2D
 
 	public void ResetForNewLayer()
 	{
+		// 第 11 课：每次换层刷新升级（商店购买后下一层立即生效）
+		ApplyUpgrades();
+
 		Health = MaxHealth;
 		Invincible = false;
 		Knockback = Vector2.Zero;
 		Modulate = new Color(Modulate.R, Modulate.G, Modulate.B, 1.0f);
 
 		EmitSignal(SignalName.HealthChanged, Health, MaxHealth);
+	}
+
+	public void ApplyUpgrades()
+	{
+		// 第 11 课：基础值 + GameData 永久等级 = 最终属性（Autoload 未注册时回退基础值）
+		var gameData = GetNodeOrNull<GameData>("/root/GameData");
+
+		if (gameData == null)
+		{
+			MaxHealth = BaseMaxHealth;
+			Speed = BaseSpeed;
+			AttackDamage = BaseAttackDamage;
+			return;
+		}
+
+		MaxHealth = BaseMaxHealth + gameData.GetMaxHealthBonus();
+		Speed = BaseSpeed * gameData.GetSpeedMultiplier();
+		AttackDamage = BaseAttackDamage + gameData.GetAttackBonus();
 	}
 
 	public override void _UnhandledInput(InputEvent @event)
@@ -256,6 +289,14 @@ public partial class Player : CharacterBody2D
 	public void TakeDamage(int amount, Vector2 sourcePosition)
 	{
 		if (Invincible)
+		{
+			return;
+		}
+
+		// 第 11 课作业 2：世界暂停（死亡等待按键）期间伤害无效——
+		// SceneTreeTimer 的 ProcessAlways 默认 true，无敌 1.2s 到期在 Paused 下照常解除，
+		// 此处短路是"等待期不被连杀"的最终防线
+		if (GetTree().Paused)
 		{
 			return;
 		}
