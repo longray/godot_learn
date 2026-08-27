@@ -10,6 +10,8 @@ extends CanvasLayer
 @onready var gold_label: Label = $VBoxContainer/GoldRow/GoldLabel
 @onready var key_label: Label = $VBoxContainer/KeyRow/KeyLabel
 @onready var floor_label: Label = $VBoxContainer/FloorLabel
+# 作业 1（第 10 课）：死亡计数行（与第 8 课 DeathLabel 死亡大字是两个节点，勿混淆）
+@onready var deaths_label: Label = $VBoxContainer/DeathLabel
 @onready var treasure_label: Label = $VBoxContainer/TreasureLabel
 @onready var explore_label: Label = $VBoxContainer/ExploreLabel
 
@@ -76,6 +78,12 @@ func update_floor(floor_number: int, best_floor_number: int = 1) -> void:
 	# 第 10 课：并列最佳层数（长期纪录，来自存档）
 	floor_label.text = "层数：第 %d 层 | 最佳：第 %d 层" % [floor_number, best_floor_number]
 	floor_label.add_theme_color_override("font_color", Color(0.55, 0.8, 1.0))
+
+
+func update_deaths(deaths: int) -> void:
+	# 作业 1（第 10 课）：死亡次数（长期纪录，来自存档）
+	deaths_label.text = "💀 死亡：%d" % deaths
+	deaths_label.add_theme_color_override("font_color", Color(0.85, 0.55, 0.65))
 
 
 func update_treasure(opened: int, total: int) -> void:

@@ -63,7 +63,11 @@ text = "未获得"
 
 [node name="FloorLabel" type="Label" parent="VBoxContainer"]
 theme_override_font_sizes/font_size = 18
-text = "层数：第 1 层"
+text = "层数：第 1 层 | 最佳：第 1 层"
+
+[node name="DeathLabel" type="Label" parent="VBoxContainer"]
+theme_override_font_sizes/font_size = 18
+text = "💀 死亡：0"
 
 [node name="TreasureLabel" type="Label" parent="VBoxContainer"]
 theme_override_font_sizes/font_size = 18

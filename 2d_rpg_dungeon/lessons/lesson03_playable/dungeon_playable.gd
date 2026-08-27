@@ -198,6 +198,18 @@ func _unhandled_input(event: InputEvent) -> void:
 	if key.pressed and not key.echo and key.keycode == KEY_R:
 		generate()
 
+	# 作业 3（第 10 课）：Backspace 删档重开（调试用——清空金币/最佳层数/死亡次数）
+	if key.pressed and not key.echo and key.keycode == KEY_BACKSPACE:
+		_delete_save()
+		gold_count = 0
+		best_floor = 1
+		total_deaths = 0
+		floor_number = 1
+		print("存档已删除，一切归零。")
+		_update_gold_hud()
+		_update_hud()
+		call_deferred("generate")
+
 
 func generate() -> void:
 	# 防止地图太小
@@ -1285,6 +1297,10 @@ func _update_hud(locked_hint: bool = false) -> void:
 	# 宝箱行无条件刷新（旧版嵌在 else 分支里，已获得钥匙时宝箱数不更新——顺手修正）
 	hud.update_treasure(treasure_count, treasure_cells.size())
 	hud.update_floor(floor_number, best_floor)
+
+	# 作业 1（第 10 课）：死亡次数行（长期纪录）
+	if hud.has_method("update_deaths"):
+		hud.update_deaths(total_deaths)
 
 
 func _update_gold_hud() -> void:
