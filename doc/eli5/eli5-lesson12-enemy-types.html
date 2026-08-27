@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ELI5: 第 12 课 · 敌人种类与精英怪</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', Roboto, sans-serif;
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      min-height: 100vh;
+      color: #fff;
+    }
+
+    .container { max-width: 960px; margin: 0 auto; padding: 40px 20px 80px; }
+
+    .hero { text-align: center; padding: 46px 20px 36px; }
+    .hero-icon { font-size: 86px; display: inline-block; animation: throb 2s ease-in-out infinite; }
+    @keyframes throb {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.12); }
+    }
+    .hero h1 { font-size: 48px; margin-top: 16px; text-shadow: 0 4px 20px rgba(0,0,0,0.35); }
+    .hero .subtitle { font-size: 21px; margin-top: 12px; opacity: 0.92; }
+    .lesson-badge {
+      display: inline-block; margin-top: 20px; padding: 8px 24px;
+      border: 2px solid rgba(255,255,255,0.7); border-radius: 999px;
+      font-size: 15px; background: rgba(255,255,255,0.12);
+    }
+
+    h2 { font-size: 36px; margin: 56px 0 22px; text-align: center; text-shadow: 0 3px 14px rgba(0,0,0,0.3); }
+
+    .card {
+      background: rgba(255,255,255,0.10);
+      border: 1px solid rgba(255,255,255,0.22);
+      border-radius: 20px; padding: 28px; margin-bottom: 24px;
+      backdrop-filter: blur(6px);
+      will-change: transform; transform: translateZ(0);
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
+    }
+    .card:hover { transform: translateY(-5px); box-shadow: 0 20px 60px rgba(0,0,0,0.30); }
+
+    /* ===== 卡牌类比 ===== */
+    .cards-wrap { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .mcard {
+      border-radius: 16px; padding: 20px 14px; text-align: center; position: relative;
+      transition: transform 0.2s; border: 3px solid transparent;
+    }
+    .mcard:hover { transform: translateY(-6px) rotate(-1deg); }
+    .mcard .micon { font-size: 46px; display: block; margin-bottom: 8px; }
+    .mcard .mname { font-size: 17px; font-weight: 800; }
+    .mcard .mdesc { font-size: 12.5px; opacity: 0.85; margin-top: 6px; line-height: 1.6; }
+    .mcard.normal { background: rgba(255, 255, 255, 0.12); }
+    .mcard.fast { background: rgba(80, 190, 255, 0.16); border-color: rgba(120, 200, 255, 0.5); }
+    .mcard.tank { background: rgba(255, 140, 80, 0.16); border-color: rgba(255, 160, 100, 0.5); }
+    .mcard.elite-card {
+      background: rgba(255, 215, 0, 0.13);
+      border: 3px solid rgba(255, 215, 0, 0.85);
+      box-shadow: 0 0 24px rgba(255, 215, 0, 0.25);
+    }
+    .mcard .foil {
+      position: absolute; top: -10px; right: -6px; font-size: 22px;
+      filter: drop-shadow(0 0 6px rgba(255,215,0,0.8));
+      animation: spinStar 3s linear infinite;
+    }
+    @keyframes spinStar { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } }
+
+    /* ===== 配置流水线 ===== */
+    .pipe-svg text { font-family: inherit; }
+    .pipe-node { cursor: pointer; transition: opacity 0.2s; }
+    .pipe-node:hover { opacity: 0.75; }
+
+    /* ===== 交互演示 ===== */
+    .demo-wrap { display: grid; grid-template-columns: 1fr 1.1fr; gap: 20px; }
+    .demo-left { display: flex; flex-direction: column; gap: 14px; }
+    .type-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .type-btn {
+      border: 2px solid rgba(255,255,255,0.3); border-radius: 12px; padding: 12px 6px;
+      font-size: 15px; font-weight: 700; color: #fff; cursor: pointer; font-family: inherit;
+      background: rgba(0,0,0,0.25); transition: all 0.15s;
+    }
+    .type-btn:hover { transform: scale(1.03); }
+    .type-btn.active-normal { background: rgba(255,255,255,0.28); border-color: #fff; }
+    .type-btn.active-fast { background: rgba(80,190,255,0.35); border-color: #8ec9ff; }
+    .type-btn.active-tank { background: rgba(255,140,80,0.35); border-color: #ffab6e; }
+
+    .ctrl-row {
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(0,0,0,0.3); border-radius: 12px; padding: 12px 16px; font-size: 15px;
+    }
+    .floor-slider { width: 150px; accent-color: #ffd54a; }
+    .floor-val { font-family: Consolas, monospace; font-weight: 800; color: #ffd54a; font-size: 18px; }
+
+    .enemy-stage {
+      background: linear-gradient(160deg, #1a1220 0%, #0d0912 100%);
+      border: 2px solid rgba(255,255,255,0.2); border-radius: 14px;
+      min-height: 210px; display: flex; align-items: center; justify-content: center;
+      position: relative; overflow: hidden;
+    }
+    .elite-glow { position: absolute; inset: 0; background: radial-gradient(circle at 50% 55%, rgba(255,215,0,0.18) 0 60px, transparent 90px); }
+    .enemy-shape { transition: transform 0.25s ease; text-align: center; }
+    .enemy-shape .glyph { font-size: 64px; display: block; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.5)); }
+    .enemy-shape .etag {
+      display: inline-block; margin-top: 6px; font-size: 13px; font-weight: 800;
+      background: rgba(0,0,0,0.45); border-radius: 999px; padding: 3px 12px;
+    }
+    .star { position: absolute; top: 14px; font-size: 26px; animation: spinStar 2.4s linear infinite; }
+
+    .stat-table { background: rgba(0,0,0,0.35); border-radius: 14px; padding: 16px; }
+    .stat-table h4 { font-size: 15px; margin-bottom: 10px; opacity: 0.9; }
+    .srow {
+      display: flex; justify-content: space-between; padding: 7px 4px;
+      border-bottom: 1px dashed rgba(255,255,255,0.12); font-size: 14.5px;
+    }
+    .srow:last-child { border-bottom: none; }
+    .srow .sv { font-family: Consolas, monospace; font-weight: 800; }
+    .sv.up { color: #a8e063; } .sv.down { color: #8ec9ff; } .sv.gold { color: #ffd54a; }
+    .buff-tag { font-size: 11px; background: rgba(255,215,0,0.25); border-radius: 6px; padding: 1px 6px; margin-left: 6px; vertical-align: middle; }
+
+    .elite-chance-bar { margin-top: 10px; }
+    .ebar-track { height: 12px; background: rgba(255,255,255,0.15); border-radius: 999px; overflow: hidden; }
+    .ebar-fill {
+      height: 100%; border-radius: 999px;
+      background: linear-gradient(90deg, #ffd54a, #ff8c00);
+      transition: width 0.3s;
+    }
+    .ebar-lbl { font-size: 12.5px; opacity: 0.85; margin-top: 6px; text-align: center; }
+
+    /* ===== 解锁时间线 ===== */
+    .unlock-svg text { font-family: inherit; }
+
+    /* ===== 作业卡 ===== */
+    .hw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
+    .hw-card {
+      border-radius: 16px; padding: 20px 14px; text-align: center;
+      background: rgba(0,0,0,0.28); border: 2px solid rgba(255,255,255,0.25);
+      transition: transform 0.2s; position: relative;
+    }
+    .hw-card:hover { transform: translateY(-6px) scale(1.02); }
+    .hw-num { position: absolute; top: 10px; left: 12px; font-size: 13px; font-weight: 700; opacity: 0.65; }
+    .hw-icon { font-size: 40px; display: block; margin: 6px 0 10px; }
+    .hw-name { font-size: 15.5px; font-weight: 700; }
+    .hw-desc { font-size: 12.5px; opacity: 0.82; margin-top: 6px; line-height: 1.55; }
+    .hw-idea {
+      margin-top: 10px; font-size: 12px; text-align: left;
+      background: rgba(0,0,0,0.3); border-radius: 8px; padding: 8px 10px;
+      line-height: 1.6; color: #ffd54a;
+    }
+    .hw-card.recommend { border-color: rgba(255, 255, 255, 0.9); background: rgba(255,255,255,0.14); }
+    .hw-card .stamp {
+      position: absolute; top: -10px; right: -8px;
+      background: #fff; color: #f5576c; font-size: 11px; font-weight: 800;
+      padding: 4px 10px; border-radius: 999px; transform: rotate(8deg);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+    }
+
+    .code-block { border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.25); }
+    .code-block .head { padding: 10px 14px; font-size: 15px; font-weight: 700; background: rgba(255,213,74,0.35); }
+    .code-block pre {
+      background: rgba(0,0,0,0.5); padding: 14px; font-family: Consolas, monospace;
+      font-size: 13px; line-height: 1.8; overflow-x: auto; color: #d8dee9;
+    }
+    .kw { color: #c792ea; } .fn { color: #82aaff; } .str { color: #c3e88d; } .cm { color: #7f8c8d; } .num { color: #f78c6c; }
+
+    .takeaway {
+      margin-top: 48px;
+      background: linear-gradient(135deg, rgba(255,215,0,0.20), rgba(255,60,60,0.18));
+      border: 2px solid rgba(255,215,0,0.65); border-radius: 20px;
+      padding: 28px; text-align: center; font-size: 21px; line-height: 1.75;
+    }
+    .takeaway .icon { font-size: 42px; display: block; margin-bottom: 10px; }
+
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 32px; }
+      h2 { font-size: 26px; }
+      .demo-wrap { grid-template-columns: 1fr; }
+      .cards-wrap { grid-template-columns: 1fr; }
+      .hero-icon { font-size: 60px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <!-- ================= Hero ================= -->
+    <div class="hero">
+      <div class="hero-icon">👾</div>
+      <h1>敌人种类与精英怪</h1>
+      <p class="subtitle">怪物不再是复制品——同一张卡，还有「闪卡」版本</p>
+      <div class="lesson-badge">第 12 课 · Godot 2D RPG 地牢</div>
+    </div>
+
+    <!-- ================= 卡牌类比 ================= -->
+    <h2>🃏 想象集换式卡牌游戏</h2>
+    <div class="card">
+      <div class="cards-wrap">
+        <div class="mcard normal">
+          <span class="micon">👾</span>
+          <div class="mname">普通怪 normal</div>
+          <div class="mdesc">白色 · 平衡型<br>血 2 · 速 70 · 伤 1</div>
+        </div>
+        <div class="mcard fast">
+          <span class="micon">💨</span>
+          <div class="mname">快速怪 fast</div>
+          <div class="mdesc">偏蓝 · 脆皮飞毛腿<br>血 1 · 速 110 · 眼尖</div>
+        </div>
+        <div class="mcard tank">
+          <span class="micon">🛡️</span>
+          <div class="mname">坦克怪 tank</div>
+          <div class="mdesc">偏橙 · 硬仗厚奖<br>血 4 · 速 45 · 伤 2 · 掉好货</div>
+        </div>
+      </div>
+      <div style="text-align:center; margin: 18px 0 12px; font-size: 26px;">⬇️ 贴上闪卡膜 ⬇️</div>
+      <div class="cards-wrap">
+        <div class="mcard elite-card">
+          <span class="foil">✨</span>
+          <span class="micon">👾</span>
+          <div class="mname">精英 normal</div>
+          <div class="mdesc">血 ×3 · 伤 +1 · 更大更金<br>掉落 +1 件 · 概率更高</div>
+        </div>
+        <div class="mcard elite-card">
+          <span class="foil">✨</span>
+          <span class="micon">💨</span>
+          <div class="mname">精英 fast</div>
+          <div class="mdesc">闪卡飞毛腿——<br>噩梦级追击者</div>
+        </div>
+        <div class="mcard elite-card">
+          <span class="foil">✨</span>
+          <span class="micon">🛡️</span>
+          <div class="mname">精英 tank</div>
+          <div class="mdesc">小 Boss 般的城墙<br>行走的宝箱</div>
+        </div>
+      </div>
+      <p style="text-align:center; font-size:17px; margin-top:14px; opacity:.9">
+        精英不是新怪物，是<b>任何基础类型的强化贴膜</b>——3 种基础卡 × 2 种稀有度 = 6 种敌人，只多写了一套强化代码。
+      </p>
+    </div>
+
+    <!-- ================= 配置流水线 ================= -->
+    <h2>🏭 一只怪物的诞生流水线</h2>
+    <div class="card">
+      <svg viewBox="0 0 900 220" style="width: 100%;" class="pipe-svg">
+        <defs><marker id="pa" markerWidth="12" markerHeight="9" refX="10" refY="4.5" orient="auto">
+          <polygon points="0 0, 12 4.5, 0 9" fill="#ffd54a"/>
+        </marker></defs>
+
+        <g class="pipe-node">
+          <rect x="20" y="60" width="150" height="100" rx="14" fill="#8ec9ff" opacity="0.85"/>
+          <text x="95" y="98" text-anchor="middle" fill="#fff" font-size="15" font-weight="bold">① 选类型</text>
+          <text x="95" y="124" text-anchor="middle" fill="#fff" font-size="12">按层数解锁池</text>
+        </g>
+        <path d="M 180 110 L 220 110" stroke="#ffd54a" stroke-width="5" marker-end="url(#pa)"/>
+
+        <g class="pipe-node">
+          <rect x="230" y="60" width="160" height="100" rx="14" fill="#f093fb" opacity="0.85"/>
+          <text x="310" y="92" text-anchor="middle" fill="#fff" font-size="15" font-weight="bold">② 类型模板</text>
+          <text x="310" y="116" text-anchor="middle" fill="#fff" font-size="12">Dictionary</text>
+          <text x="310" y="136" text-anchor="middle" fill="#fff" font-size="11">血/速/伤/眼/掉落</text>
+        </g>
+        <path d="M 400 110 L 440 110" stroke="#ffd54a" stroke-width="5" marker-end="url(#pa)"/>
+
+        <g class="pipe-node">
+          <rect x="450" y="60" width="160" height="100" rx="14" fill="#ff8c69" opacity="0.85"/>
+          <text x="530" y="92" text-anchor="middle" fill="#fff" font-size="15" font-weight="bold">③ 层数成长</text>
+          <text x="530" y="116" text-anchor="middle" fill="#fff" font-size="12">血 +1/2层</text>
+          <text x="530" y="136" text-anchor="middle" fill="#fff" font-size="12">伤 +1/4层</text>
+        </g>
+        <path d="M 620 110 L 660 110" stroke="#ffd54a" stroke-width="5" marker-end="url(#pa)"/>
+
+        <g class="pipe-node">
+          <rect x="670" y="50" width="210" height="120" rx="14" fill="#ffd54a" opacity="0.92"/>
+          <text x="775" y="82" text-anchor="middle" fill="#5a3a00" font-size="15" font-weight="bold">④ 精英判定 🎲</text>
+          <text x="775" y="108" text-anchor="middle" fill="#5a3a00" font-size="12">5% + 2%/层（上限25%）</text>
+          <text x="775" y="132" text-anchor="middle" fill="#5a3a00" font-size="12">命中 → 贴强化膜</text>
+          <text x="775" y="156" text-anchor="middle" fill="#5a3a00" font-size="11.5">→ apply_config 一次灌入</text>
+        </g>
+      </svg>
+      <div class="code-block" style="margin-top:14px;">
+        <div class="head">🧪 一个 Dictionary 就是一只怪的"基因"</div>
+        <pre>{
+  <span class="str">"name"</span>: <span class="str">"fast"</span>,
+  <span class="str">"max_health"</span>: <span class="num">1</span>,  <span class="str">"speed"</span>: <span class="num">110.0</span>,
+  <span class="str">"detection_range"</span>: <span class="num">110.0</span>,
+  <span class="str">"drop_count"</span>: <span class="num">1</span>,  <span class="str">"drop_chance_multiplier"</span>: <span class="num">1.1</span>
+}
+<span class="cm"># 精英命中后追加：血×3 / 伤+1 / 速×1.1 / 掉落+1 …</span></pre>
+      </div>
+    </div>
+
+    <!-- ================= 交互演示 ================= -->
+    <h2>🎮 怪物图鉴生成器</h2>
+    <div class="card">
+      <div class="demo-wrap">
+        <div class="demo-left">
+          <div class="type-row">
+            <button class="type-btn active-normal" id="btnN" onclick="setType('normal')">👾 普通</button>
+            <button class="type-btn" id="btnF" onclick="setType('fast')">💨 快速</button>
+            <button class="type-btn" id="btnT" onclick="setType('tank')">🛡️ 坦克</button>
+          </div>
+          <div class="ctrl-row">
+            <span>✨ 精英化</span>
+            <label class="switch"><input type="checkbox" id="tgElite" onchange="render()"><span class="slider"></span></label>
+          </div>
+          <div class="ctrl-row">
+            <span>🏰 层数</span>
+            <div><input type="range" class="floor-slider" id="floorSl" min="1" max="10" value="1" oninput="render()"> <span class="floor-val" id="floorVal">1</span></div>
+          </div>
+          <div class="enemy-stage">
+            <div class="elite-glow" id="glow" style="display:none"></div>
+            <span class="star" id="bigStar" style="display:none">⭐</span>
+            <div class="enemy-shape" id="eshape">
+              <span class="glyph" id="eglyph">👾</span>
+              <span class="etag" id="etag">normal · Lv.1</span>
+            </div>
+          </div>
+        </div>
+        <div class="stat-table">
+          <h4>📋 属性面板（基础模板 + 层数成长 + 精英强化）</h4>
+          <div class="srow"><span>❤️ 生命</span><span class="sv" id="sHp">2</span></div>
+          <div class="srow"><span>⚔️ 接触伤害</span><span class="sv" id="sDmg">1</span></div>
+          <div class="srow"><span>👟 速度</span><span class="sv" id="sSpd">70</span></div>
+          <div class="srow"><span>👁️ 侦测范围</span><span class="sv" id="sDet">90</span></div>
+          <div class="srow"><span>🪙 掉落数量</span><span class="sv gold" id="sDrop">1</span></div>
+          <div class="srow"><span>🎲 掉落概率 ×</span><span class="sv gold" id="sMult">1.0</span></div>
+          <div class="srow"><span>🧪 药水概率 +</span><span class="sv gold" id="sPot">0</span></div>
+          <div class="elite-chance-bar">
+            <div class="ebar-track"><div class="ebar-fill" id="ebar" style="width:7%"></div></div>
+            <div class="ebar-lbl">本层精英出现概率：<b id="ePct">7%</b>（5% + 2%/层，上限 25%）</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= 解锁时间线 ================= -->
+    <h2>🗺️ 遭遇时间线：越深越危险</h2>
+    <div class="card">
+      <svg viewBox="0 0 900 190" style="width: 100%;" class="unlock-svg">
+        <line x1="40" y1="150" x2="860" y2="150" stroke="rgba(255,255,255,0.4)" stroke-width="3"/>
+        <g>
+          <circle cx="120" cy="150" r="10" fill="#fff"/>
+          <text x="120" y="115" text-anchor="middle" fill="#fff" font-size="16" font-weight="bold">第 1 层</text>
+          <text x="120" y="180" text-anchor="middle" fill="#ccc" font-size="13">👾 普通怪</text>
+        </g>
+        <g>
+          <circle cx="400" cy="150" r="10" fill="#8ec9ff"/>
+          <text x="400" y="115" text-anchor="middle" fill="#fff" font-size="16" font-weight="bold">第 2 层起</text>
+          <text x="400" y="180" text-anchor="middle" fill="#8ec9ff" font-size="13">+ 💨 快速怪</text>
+        </g>
+        <g>
+          <circle cx="680" cy="150" r="10" fill="#ffab6e"/>
+          <text x="680" y="115" text-anchor="middle" fill="#fff" font-size="16" font-weight="bold">第 3 层起</text>
+          <text x="680" y="180" text-anchor="middle" fill="#ffab6e" font-size="13">+ 🛡️ 坦克怪</text>
+        </g>
+        <path d="M 40 60 C 250 58, 500 55, 700 40 C 780 33, 840 28, 860 26" stroke="#ffd54a" stroke-width="3" fill="none" stroke-dasharray="6 5"/>
+        <text x="430" y="40" text-anchor="middle" fill="#ffd54a" font-size="13.5">精英概率一路上爬（金色虚线）——深处遍地闪卡</text>
+      </svg>
+    </div>
+
+    <!-- ================= 作业讲解 ================= -->
+    <h2>📝 五个作业，逐个拆解</h2>
+    <div class="card">
+      <div class="hw-grid">
+        <div class="hw-card recommend">
+          <span class="stamp">推荐先做</span>
+          <span class="hw-num">No.1</span>
+          <span class="hw-icon">⭐</span>
+          <div class="hw-name">精英标记</div>
+          <div class="hw-desc">头顶 ★ / 金色描边 / 大影子</div>
+          <div class="hw-idea">💡 复用第 7 课 Alert 叹号的 Sprite2D 模式——加个 EliteStar 节点常驻显示</div>
+        </div>
+        <div class="hw-card recommend">
+          <span class="stamp">推荐先做</span>
+          <span class="hw-num">No.2</span>
+          <span class="hw-icon">📉</span>
+          <div class="hw-name">敌人血条</div>
+          <div class="hw-desc">受击时头顶显示血量</div>
+          <div class="hw-idea">💡 ColorRect 两层叠（底红+前绿）或 ProgressBar；take_damage 里刷新宽度，满血隐藏</div>
+        </div>
+        <div class="hw-card">
+          <span class="hw-num">No.3</span>
+          <span class="hw-icon">🌈</span>
+          <div class="hw-name">稀有度系统</div>
+          <div class="hw-desc">普通/稀有/精英/首领</div>
+          <div class="hw-idea">💡 本课精英机制的直接泛化——配置叠加层数越多越稀有（第 13 课 Boss 的地基）</div>
+        </div>
+        <div class="hw-card">
+          <span class="hw-num">No.4</span>
+          <span class="hw-icon">🎁</span>
+          <div class="hw-name">类型专属掉落</div>
+          <div class="hw-desc">fast 掉速度药水 / 精英掉钥匙碎片</div>
+          <div class="hw-idea">💡 _spawn_drop_at_position 按 enemy_type_name 分流——掉落表 Dictionary 化</div>
+        </div>
+        <div class="hw-card">
+          <span class="hw-num">No.5</span>
+          <span class="hw-icon">📖</span>
+          <div class="hw-name">敌人图鉴</div>
+          <div class="hw-desc">记录见过的怪物，商店里展示</div>
+          <div class="hw-idea">💡 GameData 加 discovered_types 集合入存档——和第 11 课单例完美衔接</div>
+        </div>
+      </div>
+      <p style="text-align:center; margin-top:16px; opacity:.85; font-size:15px">
+        按惯例一次做 1~2 个：推荐 <b>作业 1 + 2</b>（精英一眼可辨 + 血量可见——战斗反馈双件套）。
+      </p>
+    </div>
+
+    <!-- ================= Takeaway ================= -->
+    <div class="takeaway">
+      <span class="icon">💡</span>
+      配置驱动 = 组合爆炸的钥匙。<br>
+      3 个基础模板 + 1 套精英强化 = 6 种敌人——以后加"稀有/首领"只需再叠一层配置。
+    </div>
+
+  </div>
+
+  <script>
+    // ===== 图鉴生成器（模拟 _create_enemy_config 流水线）=====
+    var TYPES = {
+      normal: { glyph: '👾', hp: 2, dmg: 1, spd: 70, det: 90, drop: 1, mult: 1.0, pot: 0.0 },
+      fast:   { glyph: '💨', hp: 1, dmg: 1, spd: 110, det: 110, drop: 1, mult: 1.1, pot: 0.0 },
+      tank:   { glyph: '🛡️', hp: 4, dmg: 2, spd: 45, det: 70, drop: 1, mult: 1.6, pot: 0.15 }
+    };
+    var curType = 'normal';
+
+    function setType(t) {
+      curType = t;
+      ['N', 'F', 'T'].forEach(function(k) {
+        document.getElementById('btn' + k).className = 'type-btn';
+      });
+      document.getElementById('btn' + ({normal:'N', fast:'F', tank:'T'})[curType])
+        .className = 'type-btn active-' + curType;
+      render();
+    }
+
+    function render() {
+      var floor = parseInt(document.getElementById('floorSl').value, 10);
+      var elite = document.getElementById('tgElite').checked;
+      document.getElementById('floorVal').textContent = floor;
+
+      // ①② 类型模板
+      var c = Object.assign({}, TYPES[curType]);
+
+      // ③ 层数成长
+      c.hp += Math.floor((floor - 1) / 2);
+      c.dmg += Math.floor((floor - 1) / 4);
+
+      // ④ 精英强化
+      if (elite) {
+        c.hp *= 3; c.dmg += 1; c.spd = Math.round(c.spd * 1.1);
+        c.det = Math.round(c.det * 1.2);
+        c.drop += 1; c.mult *= 1.5; c.pot += 0.15;
+      }
+
+      document.getElementById('sHp').textContent = c.hp + (elite ? ' <span class="buff-tag">×3</span>' : '');
+      document.getElementById('sHp').innerHTML = c.hp + (elite ? '<span class="buff-tag">×3</span>' : (floor > 1 ? '<span class="buff-tag">楼层+</span>' : ''));
+      document.getElementById('sDmg').innerHTML = c.dmg + (elite ? '<span class="buff-tag">+1</span>' : '');
+      document.getElementById('sSpd').textContent = c.spd + (elite ? ' ×1.1' : '');
+      document.getElementById('sDet').textContent = c.det;
+      document.getElementById('sDrop').textContent = c.drop + ' 件';
+      document.getElementById('sMult').textContent = c.mult.toFixed(1);
+      document.getElementById('sPot').textContent = '+' + c.pot.toFixed(2);
+
+      // 视觉
+      document.getElementById('eglyph').textContent = c.glyph;
+      document.getElementById('etag').textContent = (elite ? '精英 ' : '') + curType + ' · 第 ' + floor + ' 层';
+      document.getElementById('eshape').style.transform = 'scale(' + (elite ? 1.25 : 1.0) + ')';
+      document.getElementById('glow').style.display = elite ? 'block' : 'none';
+      document.getElementById('bigStar').style.display = elite ? 'block' : 'none';
+
+      // 精英概率
+      var pct = Math.min(0.05 + 0.02 * floor, 0.25);
+      document.getElementById('ebar').style.width = (pct * 100) + '%';
+      document.getElementById('ePct').textContent = Math.round(pct * 100) + '%';
+    }
+
+    // switch 样式（复用第 10 课的开关样式）
+    var style = document.createElement('style');
+    style.textContent = '.switch{position:relative;width:46px;height:24px;flex-shrink:0;margin-left:10px}' +
+      '.switch input{opacity:0;width:0;height:0}' +
+      '.slider{position:absolute;inset:0;background:rgba(255,255,255,0.25);border-radius:999px;cursor:pointer;transition:background .2s}' +
+      '.slider::before{content:"";position:absolute;width:18px;height:18px;border-radius:50%;background:#fff;top:3px;left:3px;transition:transform .2s}' +
+      'input:checked+.slider{background:#ffd54a}' +
+      'input:checked+.slider::before{transform:translateX(22px)}';
+    document.head.appendChild(style);
+
+    render();
+  </script>
+</body>
+</html>

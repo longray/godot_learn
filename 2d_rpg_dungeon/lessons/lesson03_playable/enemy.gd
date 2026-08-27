@@ -36,7 +36,19 @@ enum EnemyState {
 @export var max_health: int = 2
 
 # 作业 3（第 6 课）：敌人类型（normal/fast/tank——setup 时按类型重塑属性与配色）
+# 第 12 课：Main 配置流经 apply_config 最终覆盖（文档的 grunt/runner/brute ≙ 本仓库命名）
 @export var enemy_type: String = "normal"
+
+# 第 12 课：精英标记（任何类型的强化贴膜——金色 lerp + 体型 ×1.25 + 属性强化）
+var is_elite: bool = false
+
+# 第 12 课：体型系数（呼吸动画每帧重写 sprite.scale——本系数乘进动画，见 _process）
+var size_scale: float = 1.0
+
+# 第 12 课：掉落属性（Main 的 on_enemy_died 消费——差异化掉落由数据驱动）
+var drop_count: int = 1
+var drop_chance_multiplier: float = 1.0
+var potion_chance_bonus: float = 0.0
 
 # 类型配色（Sprite2D modulate 基色；受击/追击时在此基础上叠加）
 const TYPE_COLOR := {
@@ -143,11 +155,15 @@ func _process(delta: float) -> void:
 
 	_t += delta * rate
 	var s := 1.0 + amp * sin(_t * 3.0)
-	sprite.scale = Vector2(s, s)
+	# 第 12 课：体型系数乘进呼吸动画（精英 ×1.25——直接设 scale 会被本行每帧覆盖）
+	sprite.scale = Vector2(s, s) * size_scale
 
 	# modulate 四态协调（作业 1：状态可视化——受击红 > 追击粉 > 返回蓝 > 类型基色）
 	# 踩坑：不能在受击回调里直接赋 modulate——本函数每帧覆盖会立刻冲掉闪烁
 	var base_color: Color = TYPE_COLOR.get(enemy_type, Color.WHITE)
+	# 第 12 课：精英金色渗染（45% 向金色 lerp——四态变色逻辑不变，只改基色）
+	if is_elite:
+		base_color = base_color.lerp(Color(1.0, 0.85, 0.3), 0.45)
 	if _flash_t > 0.0:
 		_flash_t -= delta
 		sprite.modulate = Color(1.0, 0.35, 0.35)
@@ -205,6 +221,40 @@ func setup(dungeon_reference: Node, points: Array) -> void:
 	chase_speed = speed * chase_speed_multiplier
 
 	_look_cool = randf_range(1.0, 2.5)
+
+
+func apply_config(config: Dictionary) -> void:
+	# 第 12 课：Main 配置流最终覆盖——在 setup（基础模板 + 个体差异）之后调用，
+	# 拥有最后决定权（层数成长 / 精英强化都已折算进 config）
+	enemy_type = str(config.get("name", enemy_type))
+	is_elite = bool(config.get("is_elite", false))
+
+	max_health = int(config.get("max_health", max_health))
+	health = max_health
+
+	speed = float(config.get("speed", speed))
+	contact_damage = int(config.get("contact_damage", contact_damage))
+
+	detection_range = float(config.get("detection_range", detection_range))
+	lose_range = float(config.get("lose_range", lose_range))
+	chase_speed_multiplier = float(config.get("chase_speed_multiplier", chase_speed_multiplier))
+
+	collision_radius = float(config.get("collision_radius", collision_radius))
+
+	drop_count = int(config.get("drop_count", drop_count))
+	drop_chance_multiplier = float(config.get("drop_chance_multiplier", drop_chance_multiplier))
+	potion_chance_bonus = float(config.get("potion_chance_bonus", potion_chance_bonus))
+
+	# 体型（Main 侧精英已 ×1.25 折算进 size_scale；呼吸动画每帧乘用它）
+	size_scale = float(config.get("size_scale", 1.0))
+
+	# 精英碰撞体微放大（上限 6：16px 走廊不卡死——文档问题 5 的预防）
+	if is_elite:
+		collision_radius = minf(collision_radius * 1.15, 6.0)
+
+	# setup 的个体差异已被上面覆盖——按最终速度重掷（运行期随机源，保持群体不齐步）
+	speed *= randf_range(0.85, 1.15)
+	chase_speed = speed * chase_speed_multiplier
 
 	# 第 7 课：AI 状态复位
 	state = EnemyState.PATROL

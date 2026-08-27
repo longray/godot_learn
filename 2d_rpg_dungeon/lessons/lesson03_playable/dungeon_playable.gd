@@ -80,6 +80,11 @@ extends Node2D
 @export_range(0.0, 1.0) var enemy_drop_chance: float = 0.7
 @export_range(0.0, 1.0) var enemy_potion_chance: float = 0.25
 
+# ---------- 第 12 课：精英怪概率（5% 起步，每层 +2%，上限 25%） ----------
+@export_range(0.0, 1.0) var base_elite_chance: float = 0.05
+@export_range(0.0, 0.1) var elite_chance_per_floor: float = 0.02
+@export_range(0.0, 1.0) var max_elite_chance: float = 0.25
+
 # ---------- 节点 ----------
 
 @onready var tile_layer: TileMapLayer = $TileMapLayer
@@ -1054,26 +1059,22 @@ func _create_pickup_area(
 
 func _spawn_monster_at_cell(cell: Vector2i) -> void:
 	# 第 5 课：实例化巡逻敌人（setup 注入地图引用 + 巡逻路径）
+	# 第 12 课：配置流——Main 决定类型/层数成长/精英，apply_config 一次灌入
 	if enemy_scene != null:
 		var enemy := enemy_scene.instantiate() as CharacterBody2D
 
-		if enemy:
+		if enemy and enemy.has_method("apply_config") and enemy.has_method("setup"):
+			var config := _create_enemy_config()
+
 			add_child(enemy)
 
-			enemy.global_position = get_cell_world_position(cell)
-
-			# 作业 3（第 6 课）：加权随机分配类型（60% 普通 / 25% 敏捷 / 15% 坦克）
+			# 类型先行（TYPE_COLOR 配色依赖）→ 定位 → setup（基础模板+个体差异）→ apply_config（最终覆盖）
 			if "enemy_type" in enemy:
-				var roll := rng.randf()
-				if roll < 0.60:
-					enemy.enemy_type = "normal"
-				elif roll < 0.85:
-					enemy.enemy_type = "fast"
-				else:
-					enemy.enemy_type = "tank"
+				enemy.enemy_type = str(config.get("name", "normal"))
 
-			if enemy.has_method("setup"):
-				enemy.setup(self, _make_patrol_points(cell))
+			enemy.global_position = get_cell_world_position(cell)
+			enemy.setup(self, _make_patrol_points(cell))
+			enemy.apply_config(config)
 
 			dynamic_entities.append(enemy)
 			return
@@ -1238,35 +1239,148 @@ func remove_dynamic_entity(entity: Node) -> void:
 	dynamic_entities.erase(entity)
 
 
+# =========================
+# 第 12 课：敌人类型配置流（文档 grunt/runner/brute ≙ 仓库 normal/fast/tank）
+# =========================
+
+func _create_enemy_config() -> Dictionary:
+	# 流水线：类型模板 → 层数成长 → 精英判定（命中再叠强化）
+	var config := _get_enemy_type_config(_pick_enemy_type())
+
+	_apply_floor_scaling(config)
+
+	if rng.randf() < _get_elite_chance():
+		_apply_elite_config(config)
+
+	return config
+
+
+func _pick_enemy_type() -> String:
+	# 按层数解锁（第 1 层只有普通怪——让玩家先学会读威胁，再逐步加新面孔）
+	var pool := ["normal"]
+
+	if floor_number >= 2:
+		pool.append("fast")
+
+	if floor_number >= 3:
+		pool.append("tank")
+
+	return pool[rng.randi_range(0, pool.size() - 1)]
+
+
+func _get_enemy_type_config(type: String) -> Dictionary:
+	# 类型模板（数值承接第 6/7 课平衡：追击倍率 1.15 保全员低于玩家 140 可风筝；
+	# 掉落换算自第 6 课差异化掉率：fast 0.7×0.7≈0.5 / tank 1.45×0.7≈1.0 必掉）
+	match type:
+		"fast":
+			return {
+				"name": "fast",
+				"size_scale": 0.85,
+				"max_health": 1,
+				"speed": 110.0,
+				"contact_damage": 1,
+				"detection_range": 110.0,
+				"lose_range": 170.0,
+				"chase_speed_multiplier": 1.15,
+				"collision_radius": 3.5,
+				"drop_count": 1,
+				"drop_chance_multiplier": 0.7,
+				"potion_chance_bonus": -0.25,
+			}
+		"tank":
+			return {
+				"name": "tank",
+				"size_scale": 1.35,
+				"max_health": 4,
+				"speed": 45.0,
+				"contact_damage": 2,
+				"detection_range": 70.0,
+				"lose_range": 120.0,
+				"chase_speed_multiplier": 1.15,
+				"collision_radius": 5.0,
+				"drop_count": 1,
+				"drop_chance_multiplier": 1.45,
+				"potion_chance_bonus": 0.35,
+			}
+		_:
+			return {
+				"name": "normal",
+				"size_scale": 1.0,
+				"max_health": 2,
+				"speed": 70.0,
+				"contact_damage": 1,
+				"detection_range": 90.0,
+				"lose_range": 150.0,
+				"chase_speed_multiplier": 1.15,
+				"collision_radius": 4.0,
+				"drop_count": 1,
+				"drop_chance_multiplier": 1.0,
+				"potion_chance_bonus": 0.0,
+			}
+
+
+func _apply_floor_scaling(config: Dictionary) -> void:
+	# 层数成长：血 +1/2层、伤 +1/4层（轻微——大头交给商店升级与精英）
+	var bonus_health := int((floor_number - 1) / 2)
+	var bonus_damage := int((floor_number - 1) / 4)
+
+	config["max_health"] = int(config.get("max_health", 1)) + bonus_health
+	config["contact_damage"] = int(config.get("contact_damage", 1)) + bonus_damage
+
+
+func _get_elite_chance() -> float:
+	return clampf(
+		base_elite_chance + elite_chance_per_floor * floor_number,
+		0.0,
+		max_elite_chance
+	)
+
+
+func _apply_elite_config(config: Dictionary) -> void:
+	# 精英贴膜：血 ×3 / 伤 +1 / 速 ×1.1 / 检测 ×1.2 / 更大更金 / 掉落全面强化
+	config["is_elite"] = true
+
+	config["size_scale"] = float(config.get("size_scale", 1.0)) * 1.25
+
+	config["max_health"] = int(config.get("max_health", 1)) * 3
+	config["contact_damage"] = int(config.get("contact_damage", 1)) + 1
+	config["speed"] = float(config.get("speed", 70.0)) * 1.1
+
+	config["detection_range"] = float(config.get("detection_range", 90.0)) * 1.2
+
+	config["drop_count"] = int(config.get("drop_count", 1)) + 1
+	config["drop_chance_multiplier"] = float(config.get("drop_chance_multiplier", 1.0)) * 1.5
+	config["potion_chance_bonus"] = float(config.get("potion_chance_bonus", 0.0)) + 0.15
+
+
 func on_enemy_died(enemy: Node, death_position: Vector2) -> void:
 	# 敌人死亡：移出清单 + 运行期掉落判定（rng 消耗在 generate 重置种子后，不影响复现）
 	remove_dynamic_entity(enemy)
 
-	# 作业 4（第 6 课）：差异化掉落——按敌人类型决定掉率与掉落表
-	var drop_chance := enemy_drop_chance
-	var potion_chance := enemy_potion_chance
+	# 第 12 课：掉落由敌人属性驱动（类型模板 + 精英强化已折算进这三个字段）
+	var chance_multiplier: float = enemy.get("drop_chance_multiplier") if "drop_chance_multiplier" in enemy else 1.0
+	var drop_chance := clampf(enemy_drop_chance * chance_multiplier, 0.0, 1.0)
 
-	var etype: String = enemy.get("enemy_type") if "enemy_type" in enemy else "normal"
-	match etype:
-		"fast":
-			# 敏捷怪：掉率低但必掉金币（跑得快击杀难，奖励集中）
-			drop_chance = 0.5
-			potion_chance = 0.0
-		"tank":
-			# 坦克怪：必掉且高概率药水（硬仗厚奖）
-			drop_chance = 1.0
-			potion_chance = 0.6
+	if rng.randf() >= drop_chance:
+		return
 
-	if rng.randf() < drop_chance:
-		_spawn_drop_at_position(death_position, potion_chance)
+	var amount: int = maxi(1, int(enemy.get("drop_count")) if "drop_count" in enemy else 1)
+	var potion_bonus: float = enemy.get("potion_chance_bonus") if "potion_chance_bonus" in enemy else 0.0
+
+	for i in amount:
+		var offset := Vector2(
+			rng.randf_range(-8.0, 8.0),
+			rng.randf_range(-8.0, 8.0)
+		)
+
+		_spawn_drop_at_position(death_position + offset, potion_bonus)
 
 
-func _spawn_drop_at_position(world_position: Vector2, potion_chance: float = -1.0) -> void:
-	# potion_chance < 0 时用全局默认（保持文档版调用兼容）
-	if potion_chance < 0.0:
-		potion_chance = enemy_potion_chance
-
+func _spawn_drop_at_position(world_position: Vector2, potion_bonus: float = 0.0) -> void:
+	# 第 12 课：药水概率 = 全局基准 + 敌人加成（fast 负加成 → 永远金币；tank/精英 → 高药水率）
 	var drop_type := "gold"
+
+	var potion_chance := clampf(enemy_potion_chance + potion_bonus, 0.0, 1.0)
 
 	if rng.randf() < potion_chance:
 		drop_type = "potion"
