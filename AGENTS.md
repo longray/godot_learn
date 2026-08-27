@@ -79,7 +79,7 @@ $p = "D:\AboutGame\learn\2d_rpg_dungeon"
 
 ## 课程语境
 
-第 1~10 课已完成（GDScript + C# 双版本，`lessons/lesson03_playable/` 为第 3 课起的主战场）：
+第 1~11 课已完成（GDScript + C# 双版本，`lessons/lesson03_playable/` 为第 3 课起的主战场）：
 
 - 第 1 课：随机房间 + L 走廊 + 最近邻连接 + 固定种子（种子复现性 = 同种子 + 同 RNG 调用序列 = 同地图，跨语言逐格实测一致）
 - 第 2 课：TileMapLayer + placeholder/外部 TileSet
@@ -100,6 +100,11 @@ $p = "D:\AboutGame\learn\2d_rpg_dungeon"
   + 死亡三连惩罚（reset_current_layer 升级为主路径：次数+1 / 金币×0.7 / 回第 1 层换新图，参数可调）
   + 作业 1/3（死亡次数 HUD + Backspace 删档快捷键）；作业 4 留给第 11 课商店
   + 无头测试头尾删档防 user:// 真实存档污染；Godot.Collections.Dictionary 无 GetValueOr（用 ContainsKey 手写）
+- 第 11 课：GameData Autoload 单例（金币/纪录/三升级等级真源+存档；商店与地牢共享，场景切换不销毁）
+  + 商店场景（三升级按钮/买不起变灰/进入地牢）；主场景改 shop.tscn；玩家 Base*+等级=最终属性
+  + 死亡回商店（暂停世界+大字持续+任意键返回；作业 2/4：等按键提示+价格指数 1.5^Lv）
+  + 踩坑：SceneTreeTimer 的 process_always 默认 true——paused 下协程照走（无敌到期照常解除），
+    等待期防线=take_damage 里 get_tree().paused 短路；--check-only 不加载 autoload 全局名（用 get_node_or_null）
 
-像素素材管线：`assets/sprites/generate_sprites.ps1`（字符画 + 调色板，改完重跑）。ELI5 讲解页归档 `doc/eli5/`。后续课程见 `doc/lession/`（第 11~21 课文档已就绪，下一课：商店与永久升级）。
+像素素材管线：`assets/sprites/generate_sprites.ps1`（字符画 + 调色板，改完重跑）。ELI5 讲解页归档 `doc/eli5/`。后续课程见 `doc/lession/`（第 12~21 课文档已就绪，下一课：敌人种类与精英怪）。
 
