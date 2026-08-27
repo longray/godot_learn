@@ -243,6 +243,13 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func generate() -> void:
+	# 第 12 课：消费商店的测试跳层（>0 时覆盖起始层；消费即清零——出口/死亡流程不受影响）
+	var game_data := get_node_or_null("/root/GameData")
+	if game_data and int(game_data.get("debug_start_floor")) > 0:
+		floor_number = int(game_data.get("debug_start_floor"))
+		game_data.set("debug_start_floor", 0)
+		print("【测试】跳层进入：第 ", floor_number, " 层")
+
 	# 防止地图太小
 	map_width = maxi(20, map_width)
 	map_height = maxi(16, map_height)

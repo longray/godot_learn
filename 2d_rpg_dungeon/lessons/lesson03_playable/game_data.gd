@@ -14,6 +14,9 @@ var gold: int = 0
 var best_floor: int = 1
 var total_deaths: int = 0
 
+# 第 12 课：测试跳层通道（商店写入 → 地牢 generate 消费即清零；不进存档）
+var debug_start_floor: int = 0
+
 # 永久升级等级
 var max_health_level: int = 0
 var attack_level: int = 0
