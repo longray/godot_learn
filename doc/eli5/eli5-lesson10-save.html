@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ELI5: 第 10 课 · 简单存档与死亡惩罚</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      color: #fff;
+    }
+
+    .container { max-width: 960px; margin: 0 auto; padding: 40px 20px 80px; }
+
+    .hero { text-align: center; padding: 46px 20px 36px; }
+    .hero-icon { font-size: 86px; display: inline-block; animation: bob 2.6s ease-in-out infinite; }
+    @keyframes bob {
+      0%, 100% { transform: translateY(0) rotate(-4deg); }
+      50% { transform: translateY(-10px) rotate(4deg); }
+    }
+    .hero h1 { font-size: 48px; margin-top: 16px; text-shadow: 0 4px 20px rgba(0,0,0,0.35); }
+    .hero .subtitle { font-size: 21px; margin-top: 12px; opacity: 0.92; }
+    .lesson-badge {
+      display: inline-block; margin-top: 20px; padding: 8px 24px;
+      border: 2px solid rgba(255,255,255,0.7); border-radius: 999px;
+      font-size: 15px; background: rgba(255,255,255,0.12);
+    }
+
+    h2 { font-size: 36px; margin: 56px 0 22px; text-align: center; text-shadow: 0 3px 14px rgba(0,0,0,0.3); }
+
+    .card {
+      background: rgba(255,255,255,0.10);
+      border: 1px solid rgba(255,255,255,0.22);
+      border-radius: 20px; padding: 28px; margin-bottom: 24px;
+      backdrop-filter: blur(6px);
+      will-change: transform; transform: translateZ(0);
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
+    }
+    .card:hover { transform: translateY(-5px); box-shadow: 0 20px 60px rgba(0,0,0,0.30); }
+
+    /* ===== 两类数据 ===== */
+    .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .data-box { border-radius: 16px; padding: 22px 18px; text-align: center; }
+    .data-box.run { background: rgba(245, 93, 108, 0.14); border: 2px dashed rgba(245, 93, 108, 0.65); }
+    .data-box.long { background: rgba(86, 171, 47, 0.14); border: 2px solid rgba(168, 224, 99, 0.7); }
+    .data-box .big { font-size: 38px; display: block; margin-bottom: 8px; }
+    .data-box h3 { font-size: 19px; margin-bottom: 10px; }
+    .data-box p { font-size: 14px; line-height: 1.8; opacity: 0.9; }
+    .data-box .tag {
+      display: inline-block; margin-top: 10px; font-size: 12px;
+      background: rgba(0,0,0,0.3); border-radius: 999px; padding: 4px 12px;
+    }
+
+    /* ===== 交互演示 ===== */
+    .demo-wrap { display: grid; grid-template-columns: 1fr 1.1fr; gap: 20px; }
+    .game-panel {
+      background: linear-gradient(160deg, #141a30 0%, #0b0f1e 100%);
+      border: 2px solid rgba(255,255,255,0.25); border-radius: 14px; padding: 18px;
+    }
+    .game-hud { background: rgba(0,0,0,0.45); border-radius: 10px; padding: 12px 14px; font-size: 16px; line-height: 2.0; }
+    .game-hud .gold { color: #ffd54a; }
+    .game-hud .floor { color: #8ec9ff; }
+    .game-hud .best { color: #a8e063; }
+    .game-hud .death { color: #ff7b8a; }
+    .demo-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+    .demo-btn {
+      border: none; border-radius: 12px; padding: 13px 8px; font-size: 15.5px;
+      font-weight: 700; color: #fff; cursor: pointer; font-family: inherit;
+      transition: transform 0.15s, filter 0.15s;
+    }
+    .demo-btn:hover { transform: scale(1.04); filter: brightness(1.15); }
+    .demo-btn:active { transform: scale(0.96); }
+    .btn-gold { background: linear-gradient(135deg, #f6d365, #fda085); color: #5a3a00; }
+    .btn-floor { background: linear-gradient(135deg, #4facfe, #00f2fe); }
+    .btn-die { background: linear-gradient(135deg, #f5576c, #f093fb); grid-column: 1 / -1; }
+    .btn-reset { background: rgba(255,255,255,0.18); grid-column: 1 / -1; font-weight: 600; }
+    .flash-gold { animation: flashg 0.5s; }
+    @keyframes flashg { 0% { background: rgba(255,213,74,0.4); } 100% { background: rgba(0,0,0,0.45); } }
+
+    .file-panel {
+      background: rgba(0,0,0,0.4); border: 2px solid rgba(255,255,255,0.2);
+      border-radius: 14px; padding: 14px; display: flex; flex-direction: column;
+    }
+    .file-title {
+      font-family: Consolas, monospace; font-size: 13px; color: #8ec9ff;
+      border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 8px; margin-bottom: 10px;
+      word-break: break-all;
+    }
+    .file-content {
+      font-family: Consolas, monospace; font-size: 15px; line-height: 1.9;
+      background: rgba(0,0,0,0.5); border-radius: 8px; padding: 14px; white-space: pre;
+      flex: 1;
+    }
+    .jk { color: #82aaff; } .jv { color: #c3e88d; } .jp { color: #7f8c8d; }
+    .file-note { font-size: 12.5px; opacity: 0.75; margin-top: 10px; text-align: center; }
+    .save-pulse { animation: spulse 0.6s; }
+    @keyframes spulse { 0% { box-shadow: 0 0 0 0 rgba(168,224,99,0.7); } 100% { box-shadow: 0 0 0 14px rgba(168,224,99,0); } }
+
+    /* ===== 死亡惩罚流程 ===== */
+    .flow-svg text { font-family: inherit; }
+
+    /* ===== 作业卡 ===== */
+    .hw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
+    .hw-card {
+      border-radius: 16px; padding: 20px 14px; text-align: center;
+      background: rgba(0,0,0,0.28); border: 2px solid rgba(255,255,255,0.25);
+      transition: transform 0.2s; position: relative;
+    }
+    .hw-card:hover { transform: translateY(-6px) scale(1.02); }
+    .hw-num { position: absolute; top: 10px; left: 12px; font-size: 13px; font-weight: 700; opacity: 0.65; }
+    .hw-icon { font-size: 40px; display: block; margin: 6px 0 10px; }
+    .hw-name { font-size: 15.5px; font-weight: 700; }
+    .hw-desc { font-size: 12.5px; opacity: 0.82; margin-top: 6px; line-height: 1.55; }
+    .hw-idea {
+      margin-top: 10px; font-size: 12px; text-align: left;
+      background: rgba(0,0,0,0.3); border-radius: 8px; padding: 8px 10px;
+      line-height: 1.6; color: #ffd54a;
+    }
+    .hw-card.recommend { border-color: rgba(168, 224, 99, 0.85); background: rgba(86, 171, 47, 0.14); }
+    .hw-card .stamp {
+      position: absolute; top: -10px; right: -8px;
+      background: #56ab2f; color: #fff; font-size: 11px; font-weight: 800;
+      padding: 4px 10px; border-radius: 999px; transform: rotate(8deg);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+    }
+
+    /* ===== 代码 ===== */
+    .code-block { border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.25); }
+    .code-block .head { padding: 10px 14px; font-size: 15px; font-weight: 700; background: rgba(255,213,74,0.35); }
+    .code-block pre {
+      background: rgba(0,0,0,0.5); padding: 14px; font-family: Consolas, monospace;
+      font-size: 13px; line-height: 1.8; overflow-x: auto; color: #d8dee9;
+    }
+    .kw { color: #c792ea; } .fn { color: #82aaff; } .str { color: #c3e88d; } .cm { color: #7f8c8d; } .num { color: #f78c6c; }
+
+    .takeaway {
+      margin-top: 48px;
+      background: linear-gradient(135deg, rgba(255,215,0,0.18), rgba(255,140,0,0.18));
+      border: 2px solid rgba(255,215,0,0.6); border-radius: 20px;
+      padding: 28px; text-align: center; font-size: 21px; line-height: 1.75;
+    }
+    .takeaway .icon { font-size: 42px; display: block; margin-bottom: 10px; }
+
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 32px; }
+      h2 { font-size: 26px; }
+      .demo-wrap { grid-template-columns: 1fr; }
+      .data-grid { grid-template-columns: 1fr; }
+      .hero-icon { font-size: 60px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <!-- ================= Hero ================= -->
+    <div class="hero">
+      <div class="hero-icon">💾</div>
+      <h1>简单存档与死亡惩罚</h1>
+      <p class="subtitle">给游戏装一个「存钱罐」——摔倒了会掉钱，但罐子永远在</p>
+      <div class="lesson-badge">第 10 课 · Godot 2D RPG 地牢</div>
+    </div>
+
+    <!-- ================= 类比 ================= -->
+    <h2>🧸 想象一个存钱罐</h2>
+    <div class="card">
+      <svg viewBox="0 0 900 250" style="width: 100%;">
+        <!-- 游戏厅 -->
+        <text x="215" y="30" text-anchor="middle" fill="#fff" font-size="19" font-weight="bold">街机厅的游戏机</text>
+        <rect x="40" y="48" width="350" height="170" rx="20" fill="rgba(0,0,0,0.35)" stroke="rgba(255,255,255,0.3)" stroke-width="2"/>
+        <g>
+          <rect x="80" y="80" width="120" height="90" rx="10" fill="#4facfe" opacity="0.75"/>
+          <text x="140" y="120" text-anchor="middle" fill="#fff" font-size="15" font-weight="bold">本局游戏</text>
+          <text x="140" y="145" text-anchor="middle" fill="#fff" font-size="12">关机就消失</text>
+          <text x="270" y="100" fill="#f093fb" font-size="26">🎮</text>
+          <text x="270" y="140" fill="#ccc" font-size="13">投币 = 金币</text>
+          <text x="270" y="165" fill="#ccc" font-size="13">输了就重来</text>
+        </g>
+
+        <path d="M 410 133 L 470 133" stroke="#a8e063" stroke-width="6" marker-end="url(#ar)"/>
+        <defs><marker id="ar" markerWidth="12" markerHeight="9" refX="10" refY="4.5" orient="auto">
+          <polygon points="0 0, 12 4.5, 0 9" fill="#a8e063"/>
+        </marker></defs>
+
+        <!-- 存钱罐 -->
+        <text x="685" y="30" text-anchor="middle" fill="#fff" font-size="19" font-weight="bold">你的存钱罐</text>
+        <rect x="510" y="48" width="350" height="170" rx="20" fill="rgba(0,0,0,0.35)" stroke="rgba(168,224,99,0.55)" stroke-width="2"/>
+        <g>
+          <text x="600" y="125" text-anchor="middle" font-size="52">🐷</text>
+          <text x="730" y="100" fill="#a8e063" font-size="15" font-weight="bold">带回家的战利品</text>
+          <text x="730" y="128" fill="#ddd" font-size="13">金币 · 最佳纪录 · 死亡数</text>
+          <text x="730" y="153" fill="#ddd" font-size="13">明天还在，明年也在</text>
+          <text x="730" y="183" fill="#ffd54a" font-size="12" font-family="Consolas">user://rpg_dungeon_save.json</text>
+        </g>
+      </svg>
+      <p style="text-align:center; font-size:17px; margin-top:12px; opacity:.9">
+        关机 ≠ 一无所有：本局的地图和敌人会消失，<br>但存钱罐里的金币和最佳纪录<b>永远带回家</b>。
+      </p>
+    </div>
+
+    <!-- ================= 两类数据 ================= -->
+    <h2>📦 哪些保存，哪些不保存？</h2>
+    <div class="card">
+      <div class="data-grid">
+        <div class="data-box run">
+          <span class="big">🌪️</span>
+          <h3>局内数据（不保存）</h3>
+          <p>当前层数 · 钥匙 · 宝箱<br>敌人 · 小地图迷雾 · 你的位置</p>
+          <span class="tag">关机即逝，每局新鲜</span>
+        </div>
+        <div class="data-box long">
+          <span class="big">💎</span>
+          <h3>长期数据（保存）</h3>
+          <p>金币 gold<br>最高层数 best_floor<br>死亡次数 total_deaths</p>
+          <span class="tag">写进 JSON，跨局保留</span>
+        </div>
+      </div>
+      <div class="code-block" style="margin-top:16px;">
+        <div class="head">📄 存档文件长这样（纯文本，可打开看）</div>
+        <pre>{
+  <span class="jk">"gold"</span>: <span class="jv">25</span>,
+  <span class="jk">"best_floor"</span>: <span class="jv">6</span>,
+  <span class="jk">"total_deaths"</span>: <span class="jv">3</span>
+}</pre>
+      </div>
+    </div>
+
+    <!-- ================= 交互演示 ================= -->
+    <h2>🎮 亲手玩一局（盯住右边的存档文件）</h2>
+    <div class="card">
+      <div class="demo-wrap">
+        <div class="game-panel">
+          <div class="game-hud" id="gameHud">
+            <div class="floor">🏰 层数：第 <span id="curFloor">1</span> 层</div>
+            <div class="gold">🪙 金币：<span id="curGold">0</span></div>
+            <div class="best">🏆 最佳：第 <span id="bestFloor">1</span> 层</div>
+            <div class="death">💀 死亡：<span id="deaths">0</span> 次</div>
+          </div>
+          <div class="demo-btns">
+            <button class="demo-btn btn-gold" onclick="pickGold()">🪙 捡金币</button>
+            <button class="demo-btn btn-floor" onclick="nextFloor()">🚪 下一层</button>
+            <button class="demo-btn btn-die" onclick="die()">💀 死亡（接受惩罚）</button>
+            <button class="demo-btn btn-reset" onclick="resetRun()">🔄 重开一局（模拟关机重进）</button>
+          </div>
+          <div style="font-size:12.5px; opacity:.7; margin-top:10px; text-align:center;">
+            试试：捡几枚金币 → 死一次（看存钱罐掉 30%！）→ 重开一局（金币还在！）
+          </div>
+        </div>
+        <div class="file-panel" id="filePanel">
+          <div class="file-title">📄 user://rpg_dungeon_save.json（真实位置：%APPDATA%\Godot\app_userdata\...）</div>
+          <div class="file-content" id="fileContent"></div>
+          <div class="file-note">每次绿色闪光 = _save_game() 被调用（捡金币 / 下一层 / 死亡）</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= 死亡惩罚流程 ================= -->
+    <h2>💀 死亡的那一刻发生了什么</h2>
+    <div class="card">
+      <svg viewBox="0 0 900 230" style="width: 100%;" class="flow-svg">
+        <defs><marker id="ar2" markerWidth="12" markerHeight="9" refX="10" refY="4.5" orient="auto">
+          <polygon points="0 0, 12 4.5, 0 9" fill="#ffd54a"/>
+        </marker></defs>
+
+        <g>
+          <rect x="25" y="70" width="180" height="86" rx="14" fill="#f5576c" opacity="0.85"/>
+          <text x="115" y="105" text-anchor="middle" fill="#fff" font-size="16" font-weight="bold">💀 血量归零</text>
+          <text x="115" y="132" text-anchor="middle" fill="#fff" font-size="12.5">died 信号</text>
+        </g>
+        <path d="M 215 113 L 255 113" stroke="#ffd54a" stroke-width="5" marker-end="url(#ar2)"/>
+
+        <g>
+          <rect x="265" y="40" width="200" height="146" rx="14" fill="#ffd54a" opacity="0.9"/>
+          <text x="365" y="72" text-anchor="middle" fill="#5a3a00" font-size="15" font-weight="bold">三连惩罚</text>
+          <text x="365" y="100" text-anchor="middle" fill="#5a3a00" font-size="13">💀 死亡次数 +1</text>
+          <text x="365" y="127" text-anchor="middle" fill="#5a3a00" font-size="13">🪙 金币 ×0.7（掉 30%）</text>
+          <text x="365" y="154" text-anchor="middle" fill="#5a3a00" font-size="13">🏰 层数回到第 1 层</text>
+          <text x="365" y="179" text-anchor="middle" fill="#5a3a00" font-size="12">🎲 种子随机 → 新地图</text>
+        </g>
+        <path d="M 475 113 L 515 113" stroke="#ffd54a" stroke-width="5" marker-end="url(#ar2)"/>
+
+        <g>
+          <rect x="525" y="70" width="170" height="86" rx="14" fill="#4facfe" opacity="0.85"/>
+          <text x="610" y="105" text-anchor="middle" fill="#fff" font-size="16" font-weight="bold">💾 存档</text>
+          <text x="610" y="132" text-anchor="middle" fill="#fff" font-size="12.5">惩罚结果永久记录</text>
+        </g>
+        <path d="M 705 113 L 745 113" stroke="#ffd54a" stroke-width="5" marker-end="url(#ar2)"/>
+
+        <g>
+          <rect x="755" y="70" width="130" height="86" rx="14" fill="#56ab2f" opacity="0.85"/>
+          <text x="820" y="105" text-anchor="middle" fill="#fff" font-size="16" font-weight="bold">🆕 新一局</text>
+          <text x="820" y="132" text-anchor="middle" fill="#fff" font-size="12.5">第 1 层重新出发</text>
+        </g>
+
+        <text x="450" y="215" text-anchor="middle" fill="#ccc" font-size="13.5">惩罚参数可调：death_gold_keep_ratio 0.7（保留比例）· death_resets_run（是否回第 1 层）· randomize_seed_on_death（是否换图）</text>
+      </svg>
+    </div>
+
+    <!-- ================= 改造清单 ================= -->
+    <h2>🛠️ 这次给游戏装了什么</h2>
+    <div class="card">
+      <div class="hw-grid">
+        <div class="hw-card">
+          <span class="hw-num">新增</span>
+          <span class="hw-icon">💾</span>
+          <div class="hw-name">存档系统</div>
+          <div class="hw-desc">FileAccess + JSON，存 user://，启动时读取</div>
+        </div>
+        <div class="hw-card">
+          <span class="hw-num">新增</span>
+          <span class="hw-icon">⚖️</span>
+          <div class="hw-name">死亡惩罚</div>
+          <div class="hw-desc">死亡三连：次数+1 / 金币×0.7 / 回第 1 层换新图</div>
+        </div>
+        <div class="hw-card">
+          <span class="hw-num">改造</span>
+          <span class="hw-icon">🚪</span>
+          <div class="hw-name">出口存档</div>
+          <div class="hw-desc">下一层时更新最佳层数 best_floor 并保存</div>
+        </div>
+        <div class="hw-card">
+          <span class="hw-num">改造</span>
+          <span class="hw-icon">🪙</span>
+          <div class="hw-name">金币即时存</div>
+          <div class="hw-desc">捡到金币立刻保存——随时关机都不亏</div>
+        </div>
+        <div class="hw-card">
+          <span class="hw-num">改造</span>
+          <span class="hw-icon">🖥️</span>
+          <div class="hw-name">HUD 最佳层数</div>
+          <div class="hw-desc">「层数：第 1 层 | 最佳：第 3 层」</div>
+        </div>
+      </div>
+      <p style="text-align:center; margin-top:14px; opacity:.85; font-size:14.5px">
+        ⚙️ 合并决策：惩罚逻辑放进仓库真实的死亡主路径 reset_current_layer()（第 5 课入口），课程语义从「重置本层」升级为「重置整局」
+      </p>
+    </div>
+
+    <!-- ================= 作业讲解 ================= -->
+    <h2>📝 五个作业，逐个拆解</h2>
+    <div class="card">
+      <div class="hw-grid">
+        <div class="hw-card recommend">
+          <span class="stamp">推荐先做</span>
+          <span class="hw-num">No.1</span>
+          <span class="hw-icon">💀</span>
+          <div class="hw-name">死亡次数 HUD</div>
+          <div class="hw-desc">新增 DeathLabel 显示「死亡：3」</div>
+          <div class="hw-idea">💡 hud.gd 加 update_deaths()；Main._update_hud() 转发——与层数行完全同套路</div>
+        </div>
+        <div class="hw-card recommend">
+          <span class="stamp">推荐先做</span>
+          <span class="hw-num">No.3</span>
+          <span class="hw-icon">⌫</span>
+          <div class="hw-name">删档快捷键</div>
+          <div class="hw-desc">按 Backspace 清空存档重来</div>
+          <div class="hw-idea">💡 DirAccess.remove_absolute + 变量归零 + generate()；调试神器，防「存档被测试污染」</div>
+        </div>
+        <div class="hw-card">
+          <span class="hw-num">No.2</span>
+          <span class="hw-icon">🩸</span>
+          <div class="hw-name">死亡提示升级</div>
+          <div class="hw-desc">「你死了 / 失去 30% 金币」两行</div>
+          <div class="hw-idea">💡 第 8 课 DeathLabel 已有——扩个副标题 Label，show_death 加参数</div>
+        </div>
+        <div class="hw-card">
+          <span class="hw-num">No.4</span>
+          <span class="hw-icon">📈</span>
+          <div class="hw-name">永久升级</div>
+          <div class="hw-desc">花金币买 +生命/+攻击/+速度</div>
+          <div class="hw-idea">💡 这正是第 11 课「商店」的全部内容——建议留着下课做，别抢戏</div>
+        </div>
+        <div class="hw-card">
+          <span class="hw-num">No.5</span>
+          <span class="hw-icon">🎲</span>
+          <div class="hw-name">局内种子存档</div>
+          <div class="hw-desc">关机后从当前层继续</div>
+          <div class="hw-idea">💡 存 seed+floor+has_key，启动恢复——进阶挑战，涉及"半局状态"序列化</div>
+        </div>
+      </div>
+      <p style="text-align:center; margin-top:16px; opacity:.85; font-size:15px">
+        按惯例一次做 1~2 个：推荐 <b>作业 1 + 3</b>（HUD 补全 + 调试神器）。
+      </p>
+    </div>
+
+    <!-- ================= Takeaway ================= -->
+    <div class="takeaway">
+      <span class="icon">💡</span>
+      Roguelite 的灵魂 = 「失去一局，留下成长」。<br>
+      死亡拿走你的地图，存钱罐留住你的金币——所以下次出发，你比上次更强。
+    </div>
+
+  </div>
+
+  <script>
+    // ===== 演示状态（模拟长期存档——重开一局不清零）=====
+    var S = { gold: 0, bestFloor: 1, deaths: 0, floor: 1 };
+
+    function renderFile(pulse) {
+      var el = document.getElementById('fileContent');
+      el.innerHTML =
+        '{\n' +
+        '  <span class="jk">"gold"</span>: <span class="jv">' + S.gold + '</span>,\n' +
+        '  <span class="jk">"best_floor"</span>: <span class="jv">' + S.bestFloor + '</span>,\n' +
+        '  <span class="jk">"total_deaths"</span>: <span class="jv">' + S.deaths + '</span>\n' +
+        '}';
+
+      document.getElementById('curGold').textContent = S.gold;
+      document.getElementById('curFloor').textContent = S.floor;
+      document.getElementById('bestFloor').textContent = S.bestFloor;
+      document.getElementById('deaths').textContent = S.deaths;
+
+      if (pulse) {
+        var panel = document.getElementById('filePanel');
+        panel.classList.remove('save-pulse');
+        void panel.offsetWidth;
+        panel.classList.add('save-pulse');
+      }
+    }
+
+    function pickGold() {
+      S.gold += 1;
+      var hud = document.getElementById('gameHud');
+      hud.classList.remove('flash-gold'); void hud.offsetWidth; hud.classList.add('flash-gold');
+      renderFile(true);  // 捡金币 → _save_game()
+    }
+
+    function nextFloor() {
+      S.floor += 1;
+      if (S.floor > S.bestFloor) S.bestFloor = S.floor;  // best = max(best, floor)
+      renderFile(true);  // 下一层 → _save_game()
+    }
+
+    function die() {
+      S.deaths += 1;
+      S.gold = Math.floor(S.gold * 0.7);  // 保留 70%
+      S.floor = 1;                         // 回第 1 层
+      renderFile(true);
+    }
+
+    function resetRun() {
+      S.floor = 1;  // 只重置局内——长期数据从"存档"读回（= 演示里保持不变）
+      renderFile(false);
+    }
+
+    renderFile();
+  </script>
+</body>
+</html>
