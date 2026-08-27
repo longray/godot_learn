@@ -28,6 +28,8 @@ public partial class Hud : CanvasLayer
 	private Label _goldLabel = null!;
 	private Label _keyLabel = null!;
 	private Label _floorLabel = null!;
+	// 作业 1（第 10 课）：死亡计数行（与第 8 课 DeathLabel 死亡大字是两个节点，勿混淆）
+	private Label _deathsLabel = null!;
 	private Label _treasureLabel = null!;
 	private Label _exploreLabel = null!;
 
@@ -47,6 +49,7 @@ public partial class Hud : CanvasLayer
 		_goldLabel = GetNode<Label>("VBoxContainer/GoldRow/GoldLabel");
 		_keyLabel = GetNode<Label>("VBoxContainer/KeyRow/KeyLabel");
 		_floorLabel = GetNode<Label>("VBoxContainer/FloorLabel");
+		_deathsLabel = GetNode<Label>("VBoxContainer/DeathLabel");
 		_treasureLabel = GetNode<Label>("VBoxContainer/TreasureLabel");
 		_exploreLabel = GetNode<Label>("VBoxContainer/ExploreLabel");
 		_keyIcon = GetNode<TextureRect>("VBoxContainer/KeyRow/KeyIcon");
@@ -114,11 +117,19 @@ public partial class Hud : CanvasLayer
 		_keyLabel.AddThemeColorOverride("font_color", new Color(1.0f, 0.5f, 0.4f));
 	}
 
-	public void UpdateFloor(int floorNumber)
+	public void UpdateFloor(int floorNumber, int bestFloorNumber = 1)
 	{
-		// 第 8 课新增：层数显示（出口进入下一层时 +1）
-		_floorLabel.Text = $"层数：第 {floorNumber} 层";
+		// 第 8 课：层数显示（出口进入下一层时 +1）
+		// 第 10 课：并列最佳层数（长期纪录，来自存档）
+		_floorLabel.Text = $"层数：第 {floorNumber} 层 | 最佳：第 {bestFloorNumber} 层";
 		_floorLabel.AddThemeColorOverride("font_color", new Color(0.55f, 0.8f, 1.0f));
+	}
+
+	public void UpdateDeaths(int deaths)
+	{
+		// 作业 1（第 10 课）：死亡次数（长期纪录，来自存档）
+		_deathsLabel.Text = $"💀 死亡：{deaths}";
+		_deathsLabel.AddThemeColorOverride("font_color", new Color(0.85f, 0.55f, 0.65f));
 	}
 
 	public void UpdateTreasure(int opened, int total)

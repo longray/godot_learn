@@ -15,6 +15,15 @@ public partial class DungeonPlayable : Node2D
 	[Export] public int SeedValue { get; set; } = 20260824;
 	[Export] public bool UseRandomSeed { get; set; } = false;
 
+	// ---------- 第 10 课：死亡惩罚参数 ----------
+
+	// 死亡后是否重置当前局（回第 1 层重新生成）；false = 保留第 5 课"本层复原"行为
+	[Export] public bool DeathResetsRun { get; set; } = true;
+	// 死亡后保留的金币比例（0.7 = 损失 30%）
+	[Export(PropertyHint.Range, "0.0,1.0")] public float DeathGoldKeepRatio { get; set; } = 0.7f;
+	// 死亡重开时是否随机地图种子（换一张新图）
+	[Export] public bool RandomizeSeedOnDeath { get; set; } = true;
+
 	[Export] public int MapWidth { get; set; } = 48;
 	[Export] public int MapHeight { get; set; } = 32;
 
@@ -116,6 +125,13 @@ public partial class DungeonPlayable : Node2D
 	// 第 8 课：层数（出口进入下一层 +1；金币跨层保留，钥匙/宝箱/生命每层重置）
 	public int FloorNumber { get; private set; } = 1;
 
+	// 第 10 课：长期数据（跨局保存在 user:// 存档）
+	public int BestFloor { get; private set; } = 1;
+	public int TotalDeaths { get; private set; }
+
+	// 第 10 课：存档路径（user:// = 各平台用户数据目录，勿写 res://）
+	private const string SavePath = "user://rpg_dungeon_save.json";
+
 	// ---------- 节点 ----------
 
 	private TileMapLayer _tileLayer;
@@ -196,6 +212,9 @@ public partial class DungeonPlayable : Node2D
 
 	public override void _Ready()
 	{
+		// 第 10 课：启动先读档（金币/最佳层数/死亡次数——没有存档则保持默认值）
+		LoadGame();
+
 		_tileLayer = GetNode<TileMapLayer>("TileMapLayer");
 		_pathOverlay = GetNodeOrNull<PathOverlay>("PathOverlay");
 		_hud = GetNodeOrNull<Hud>("HUD");
@@ -215,6 +234,20 @@ public partial class DungeonPlayable : Node2D
 		if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.R })
 		{
 			Generate();
+		}
+
+		// 作业 3（第 10 课）：Backspace 删档重开（调试用——清空金币/最佳层数/死亡次数）
+		if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Backspace })
+		{
+			DeleteSave();
+			GoldCount = 0;
+			BestFloor = 1;
+			TotalDeaths = 0;
+			FloorNumber = 1;
+			GD.Print("存档已删除，一切归零。");
+			UpdateGoldHud();
+			UpdateHud();
+			CallDeferred(MethodName.Generate);
 		}
 	}
 
@@ -907,6 +940,9 @@ public partial class DungeonPlayable : Node2D
 			GD.Print("使用钥匙，进入下一层。");
 			// 第 8 课：层数 +1（金币跨层保留；钥匙/宝箱/生命由 Generate 内部重置）
 			FloorNumber++;
+			// 第 10 课：更新最佳层数并保存（下楼即存档，随时关机不亏）
+			BestFloor = Mathf.Max(BestFloor, FloorNumber);
+			SaveGame();
 			// 物理回调中不能直接改场景树，延迟到帧末安全执行
 			CallDeferred(MethodName.Generate);
 		}
@@ -1562,6 +1598,8 @@ public partial class DungeonPlayable : Node2D
 				GoldCount++;
 				GD.Print("捡到金币，当前金币：", GoldCount);
 				UpdateGoldHud();
+				// 第 10 课：捡到金币立刻存档（长期数据即时落盘）
+				SaveGame();
 			}
 			else if (dropType == "potion")
 			{
@@ -1611,7 +1649,9 @@ public partial class DungeonPlayable : Node2D
 
 		// 宝箱行无条件刷新（旧版嵌在 else 分支里，已获得钥匙时宝箱数不更新——顺手修正）
 		_hud.UpdateTreasure(TreasureCount, TreasureCells.Count);
-		_hud.UpdateFloor(FloorNumber);
+		_hud.UpdateFloor(FloorNumber, BestFloor);
+		// 作业 1（第 10 课）：死亡次数行（长期纪录）
+		_hud?.UpdateDeaths(TotalDeaths);
 	}
 
 	// =========================
@@ -1856,8 +1896,31 @@ public partial class DungeonPlayable : Node2D
 
 	public void ResetCurrentLayer()
 	{
-		// 作业 5（第 5 课）：死亡重置本层——钥匙/宝箱/怪物全部复原重来
-		GD.Print("本层已重置！钥匙宝箱怪物全部复原。");
+		// 第 5 课：死亡重置本层——钥匙/宝箱/怪物全部复原重来
+		// 第 10 课：升级为死亡惩罚主路径（Player.Die() 的真实入口）
+		//   三连惩罚：死亡次数 +1 / 金币 ×DeathGoldKeepRatio / 回第 1 层换新图
+		TotalDeaths++;
+		GoldCount = (int)(GoldCount * DeathGoldKeepRatio);
+
+		GD.Print($"本层已重置！死亡 {TotalDeaths} 次，金币剩余：{GoldCount}");
+
+		if (DeathResetsRun)
+		{
+			// 整局重开：回第 1 层 +（可选）随机种子换新图
+			FloorNumber = 1;
+
+			if (RandomizeSeedOnDeath)
+			{
+				UseRandomSeed = true;
+			}
+		}
+
+		SaveGame();
+		UpdateGoldHud();
+		// 金币惩罚后 HUD 必须单独刷金币行（UpdateHud 不覆盖 gold_label）
+		UpdateHud();
+
+		// 固定种子 + DeathResetsRun=false = 第 5 课本层复原；否则换新图/新局
 		Generate();
 	}
 
@@ -1878,6 +1941,79 @@ public partial class DungeonPlayable : Node2D
 	{
 		// 作业 5（第 8 课）：死亡 → HUD 大字提示
 		_hud?.ShowDeath();
+	}
+
+	// =========================
+	// 第 10 课：存档（长期数据：金币/最佳层数/死亡次数）
+	// =========================
+
+	private void SaveGame()
+	{
+		// JSON 明文存档——可读可调试；局内状态（地图/钥匙/迷雾）不保存，每局从第 1 层开始
+		var data = new Godot.Collections.Dictionary
+		{
+			["gold"] = GoldCount,
+			["best_floor"] = BestFloor,
+			["total_deaths"] = TotalDeaths,
+		};
+
+		using FileAccess file = FileAccess.Open(SavePath, FileAccess.ModeFlags.Write);
+
+		if (file == null)
+		{
+			GD.PushWarning("无法打开存档文件进行写入。");
+			return;
+		}
+
+		file.StoreString(Json.Stringify(data, "  "));
+	}
+
+	private void LoadGame()
+	{
+		// 无存档 = 首次运行，保持默认值即可
+		if (!FileAccess.FileExists(SavePath))
+		{
+			return;
+		}
+
+		using FileAccess file = FileAccess.Open(SavePath, FileAccess.ModeFlags.Read);
+
+		if (file == null)
+		{
+			GD.PushWarning("无法打开存档文件。");
+			return;
+		}
+
+		var json = new Json();
+		Error error = json.Parse(file.GetAsText());
+
+		if (error != Error.Ok)
+		{
+			GD.PushWarning("存档解析失败。");
+			return;
+		}
+
+		if (json.Data.VariantType != Variant.Type.Dictionary)
+		{
+			GD.PushWarning("存档格式错误。");
+			return;
+		}
+
+		var data = json.Data.AsGodotDictionary();
+
+		// Get 缺省值兜底：旧版本存档缺字段也不崩（Godot.Dictionary 无 GetValueOr，手写同语义）
+		GoldCount = data.ContainsKey("gold") ? (int)(double)data["gold"] : GoldCount;
+		BestFloor = data.ContainsKey("best_floor") ? (int)(double)data["best_floor"] : BestFloor;
+		TotalDeaths = data.ContainsKey("total_deaths") ? (int)(double)data["total_deaths"] : TotalDeaths;
+	}
+
+	public void DeleteSave()
+	{
+		// 作业 3 预留入口（调试删档）；无存档时静默通过
+		if (FileAccess.FileExists(SavePath))
+		{
+			DirAccess.RemoveAbsolute(SavePath);
+		}
 	}
 
 	// =========================
