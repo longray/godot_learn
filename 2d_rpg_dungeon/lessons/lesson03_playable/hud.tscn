@@ -102,5 +102,23 @@ text = "你死了"
 mouse_filter = 2
 visible = false
 
+[node name="DeathHintLabel" type="Label" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -280.0
+offset_top = 40.0
+offset_right = 280.0
+offset_bottom = 74.0
+theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(1, 0.75, 0.75, 1)
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "损失 30% 金币 · 按任意键返回商店"
+mouse_filter = 2
+visible = false
+
 [node name="MiniMap" type="Control" parent="."]
 script = ExtResource("6_minimap")

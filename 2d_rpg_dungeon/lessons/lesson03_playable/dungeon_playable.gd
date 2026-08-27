@@ -146,6 +146,9 @@ var total_deaths: int = 0
 # 第 11 课：死亡结算后返回商店（游戏主循环：商店 → 地牢 → 死亡 → 商店）
 const SHOP_SCENE := "res://lessons/lesson03_playable/shop.tscn"
 
+# 作业 2（第 11 课）：死亡等待按键状态（true 时拦截 R/Backspace，任意键回商店）
+var _death_awaiting_input := false
+
 var has_key := false
 var treasure_count := 0
 
@@ -201,6 +204,13 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key == null:
+		return
+
+	# 作业 2（第 11 课）：死亡等待——任意按键返回商店（优先拦截 R/Backspace，防等待期误操作）
+	if _death_awaiting_input:
+		if key.pressed and not key.echo:
+			_death_awaiting_input = false
+			get_tree().change_scene_to_file(SHOP_SCENE)
 		return
 
 	if key.pressed and not key.echo and key.keycode == KEY_R:
@@ -1181,9 +1191,14 @@ func reset_current_layer() -> void:
 	_update_hud()
 
 	if death_resets_run:
-		# 第 11 课：死亡不再原地重开——等 HUD 死亡大字（1.2s）播完再切回商店
-		await get_tree().create_timer(1.5).timeout
-		get_tree().change_scene_to_file(SHOP_SCENE)
+		# 第 11 课 + 作业 2：死亡大字 + 损失副标题持续显示，等玩家按键再回商店
+		# （不再定时自动切——给玩家看清惩罚的仪式感）
+		var lost_pct := int(round((1.0 - death_gold_keep_ratio) * 100.0))
+
+		if hud and hud.has_method("show_death"):
+			hud.show_death("损失 %d%% 金币 · 按任意键返回商店" % lost_pct, false)
+
+		_death_awaiting_input = true
 	else:
 		# 轻模式（death_resets_run=false）：保留第 10 课行为——固定种子下本层复原
 		generate()

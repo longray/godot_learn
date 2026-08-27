@@ -45,13 +45,15 @@ func get_speed_multiplier() -> float:
 # =========================
 
 func get_upgrade_cost(type: String) -> int:
+	# 作业 4（第 11 课）：指数涨价 base × 1.5^Lv——后期一等级 = 前几级之和，逼玩家取舍
+	# （Lv0 价格与线性版一致：10/15/12；Lv2 起 22/33/27 明显陡升）
 	match type:
 		"max_health":
-			return 10 + max_health_level * 10
+			return int(10.0 * pow(1.5, max_health_level))
 		"attack":
-			return 15 + attack_level * 15
+			return int(15.0 * pow(1.5, attack_level))
 		"speed":
-			return 12 + speed_level * 12
+			return int(12.0 * pow(1.5, speed_level))
 
 	return 999999
 

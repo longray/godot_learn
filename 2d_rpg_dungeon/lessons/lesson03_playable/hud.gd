@@ -21,15 +21,18 @@ extends CanvasLayer
 # 作业 4/5（第 8 课）：受伤红屏覆盖层 + 死亡大字
 @onready var hurt_overlay: ColorRect = $HurtOverlay
 @onready var death_label: Label = $DeathLabel
+@onready var death_hint_label: Label = $DeathHintLabel
 
 # 红屏参数：瞬间拉到 0.25 透明度，每秒衰减 0.5（约 0.5s 消退）
 const HURT_FLASH_ALPHA := 0.25
 const HURT_FADE_SPEED := 0.5
 
-# 死亡提示显示时长（秒）
+# 死亡提示显示时长（秒；仅 auto_hide 模式——death_resets_run=false 的轻死亡路径）
 const DEATH_SHOW_TIME := 1.2
 
-var _death_showing := false
+# 死亡提示会话令牌：新 show_death/hide_death 使挂起中的旧协程失效
+# （防旧协程 1.2s 后恢复时误关持续模式的新大字——作业 2 的关键守卫）
+var _death_token := 0
 
 # 第 5 课资产迁移：心形纹理（满/空心）
 const HEART_FULL_TEXTURE: Texture2D = preload("res://assets/sprites/heart_full.png")
@@ -122,14 +125,34 @@ func flash_hurt() -> void:
 	hurt_overlay.color.a = HURT_FLASH_ALPHA
 
 
-func show_death() -> void:
-	# 作业 5（第 8 课）：死亡大字，居中弹出 DEATH_SHOW_TIME 秒后隐藏
-	# _death_showing 守卫：连续死亡时避免两个并发 await 互相提前关灯
-	if _death_showing:
+func show_death(hint_text: String = "", auto_hide: bool = true) -> void:
+	# 作业 5（第 8 课）：死亡大字
+	# 作业 2（第 11 课）：auto_hide=false 持续显示（死亡等按键回商店，场景切换时随 HUD 销毁）；
+	# hint_text 非空时副标题同步显示（损失比例提示）
+	var my_token := ++_death_token
+
+	death_label.visible = true
+
+	if hint_text != "" and death_hint_label:
+		death_hint_label.text = hint_text
+		death_hint_label.visible = true
+
+	if not auto_hide:
 		return
 
-	_death_showing = true
-	death_label.visible = true
 	await get_tree().create_timer(DEATH_SHOW_TIME).timeout
+
+	# 会话已被更新的 show/hide 取代——不再动界面
+	if my_token != _death_token:
+		return
+
+	hide_death()
+
+
+func hide_death() -> void:
+	# 隐藏大字与副标题；递增令牌作废所有挂起中的旧协程
+	_death_token += 1
 	death_label.visible = false
-	_death_showing = false
+
+	if death_hint_label:
+		death_hint_label.visible = false
