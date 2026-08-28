@@ -16,6 +16,9 @@ public partial class GameData : Node
 	public int BestFloor { get; set; } = 1;
 	public int TotalDeaths { get; set; }
 
+	// 第 12 课：测试跳层通道（商店写入 → 地牢 Generate 消费即清零；不进存档）
+	public int DebugStartFloor { get; set; }
+
 	// 永久升级等级
 	public int MaxHealthLevel { get; set; }
 	public int AttackLevel { get; set; }

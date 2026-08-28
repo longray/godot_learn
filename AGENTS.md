@@ -64,7 +64,7 @@ $p = "D:\AboutGame\learn\2d_rpg_dungeon"
 
 ## 踩坑记录
 
-- **C# 方法名不转 snake_case**：C# 方法/属性对引擎侧暴露为 PascalCase 原名——GDScript 的 `has_method("take_damage")` 对 C# 类永远 false（应查 `TakeDamage`）；C# 侧动态调用同理。**跨语言交互优先强类型 `is` 转换直调**，勿用字符串方法名（已实测：攻击命中、药水治疗两处静默失败均由此起）
+- **C# 方法名不转 snake_case**：C# 方法/属性对引擎侧暴露为 PascalCase 原名——GDScript 的 `has_method("take_damage")` 对 C# 类永远 false（应查 `TakeDamage`）；C# 侧动态调用同理。**跨语言交互优先强类型 `is` 转换直调**，勿用字符串方法名（已实测：攻击命中、药水治疗两处静默失败均由此起）。另：**C# private 成员（字段/方法）引擎侧完全不可见**——`get("_rooms")` 返回 null、`call("CreateEnemyConfig")` 失败；无头断言只能走 public 属性（如 `RoomCount`）或 `find_children` 探测（第 12 课实测）
 - **TileSet 碰撞坐标**：碰撞多边形坐标相对于 tile 中心（而非左上角），16×16 tile 应为 `PackedVector2Array(-8,-8, 8,-8, 8,8, -8,8)`，详见 `doc/notes/tileset_collision_coordinates.md`
 - **2D 节点层叠**：想让节点画在"角色下面"勿用 `z_index = -1`——有效 z 会低于 TileMapLayer(0) 被地板完全遮挡；正确做法是同层树序（Shadow 节点放 Sprite2D 之前，z 保持默认）
 - 无头 `-s` 脚本里 `add_child()` 后 `_ready()` **不会立即触发**（消息队列未刷新即 `quit()`）——测试要直接调 `generate()` 等方法，勿依赖 `_ready`
@@ -79,7 +79,7 @@ $p = "D:\AboutGame\learn\2d_rpg_dungeon"
 
 ## 课程语境
 
-第 1~11 课已完成（GDScript + C# 双版本，`lessons/lesson03_playable/` 为第 3 课起的主战场）：
+第 1~12 课已完成（GDScript + C# 双版本，`lessons/lesson03_playable/` 为第 3 课起的主战场）：
 
 - 第 1 课：随机房间 + L 走廊 + 最近邻连接 + 固定种子（种子复现性 = 同种子 + 同 RNG 调用序列 = 同地图，跨语言逐格实测一致）
 - 第 2 课：TileMapLayer + placeholder/外部 TileSet
@@ -105,6 +105,14 @@ $p = "D:\AboutGame\learn\2d_rpg_dungeon"
   + 死亡回商店（暂停世界+大字持续+任意键返回；作业 2/4：等按键提示+价格指数 1.5^Lv）
   + 踩坑：SceneTreeTimer 的 process_always 默认 true——paused 下协程照走（无敌到期照常解除），
     等待期防线=take_damage 里 get_tree().paused 短路；--check-only 不加载 autoload 全局名（用 get_node_or_null）
+- 第 12 课：敌人配置流（Main 决定类型/层数成长/精英 → apply_config 一次灌入；C# 用强类型 EnemyConfig 类）
+  + 按层解锁池（1 层 normal / 2 层+fast / 3 层+tank 等权）+ 层数成长（血+1/2层 伤+1/4层）
+  + 精英贴膜（5%+2%/层 cap25%：血×3 伤+1 速×1.1 掉落强化 ×1.25 体型金色 lerp）
+  + 掉落属性驱动（drop_count/drop_chance_multiplier/potion_chance_bonus——删 match etype 硬编码）
+  + 作业 1+2：精英头顶常驻 ⭐（-21 与 Alert -14 错位）+ 受击血条（满血/死亡隐藏）
+  + 商店调试跳层（GameData.debug_start_floor 通道，消费即清零不进存档；打印本图精英统计）
+  + 坑：呼吸动画每帧覆盖 sprite.scale——体型系数须乘进动画；无头 -s 下真 GameData autoload 已注册
+    （fake 同名节点会撞——/root/GameData 解析到第一个）；star.png 生成须用 pwsh（PS5 读 UTF-8 无 BOM 乱码）
 
-像素素材管线：`assets/sprites/generate_sprites.ps1`（字符画 + 调色板，改完重跑）。ELI5 讲解页归档 `doc/eli5/`。后续课程见 `doc/lession/`（第 12~21 课文档已就绪，下一课：敌人种类与精英怪）。
+像素素材管线：`assets/sprites/generate_sprites.ps1`（字符画 + 调色板，改完重跑，**须用 pwsh**）。ELI5 讲解页归档 `doc/eli5/`。后续课程见 `doc/lession/`（第 12~21 课文档已就绪，下一课：13-Boss 房与 Boss 战）。
 

@@ -1,11 +1,11 @@
-[gd_scene load_steps=7 format=3 uid="uid://cdk3wau04wocm"]
+[gd_scene format=3 uid="uid://cdk3wau04wocm"]
 
 [ext_resource type="Script" uid="uid://bttsnjhyf20ym" path="res://lessons/lesson03_playable/dungeon_playable.gd" id="1_main"]
 [ext_resource type="TileSet" uid="uid://cu7s624kw70bb" path="res://assets/tiles/dungeon_tiles.tres" id="2_tiles"]
 [ext_resource type="PackedScene" path="res://lessons/lesson03_playable/player.tscn" id="3_player"]
 [ext_resource type="Script" uid="uid://d1wowjicq0rdx" path="res://lessons/lesson03_playable/path_overlay.gd" id="4_overlay"]
 [ext_resource type="PackedScene" path="res://lessons/lesson03_playable/enemy.tscn" id="5_enemy"]
-[ext_resource type="PackedScene" path="res://lessons/lesson03_playable/hud.tscn" id="6_hud"]
+[ext_resource type="PackedScene" uid="uid://chud8k4l2w0q7" path="res://lessons/lesson03_playable/hud.tscn" id="6_hud"]
 
 [node name="Main" type="Node2D" unique_id=53313134]
 script = ExtResource("1_main")
@@ -19,4 +19,4 @@ tile_set = ExtResource("2_tiles")
 [node name="PathOverlay" type="Node2D" parent="." unique_id=984029640]
 script = ExtResource("4_overlay")
 
-[node name="HUD" parent="." instance=ExtResource("6_hud")]
+[node name="HUD" parent="." unique_id=1138844128 instance=ExtResource("6_hud")]

@@ -78,8 +78,13 @@ public partial class DungeonPlayable : Node2D
 	[Export(PropertyHint.Range, "0,12")] public int MaxMonsters { get; set; } = 6;
 
 	// 第 6 课：掉落参数（死亡掉率 0.7；掉落物中 0.25 是药水、0.75 是金币）
-	[Export(PropertyHint.Range, "0.0,1.0")] public float EnemyDropChance { get; set; } = 0.7f;
+		[Export(PropertyHint.Range, "0.0,1.0")] public float EnemyDropChance { get; set; } = 0.7f;
 	[Export(PropertyHint.Range, "0.0,1.0")] public float EnemyPotionChance { get; set; } = 0.25f;
+
+	// ---------- 第 12 课：精英怪概率（5% 起步，每层 +2%，上限 25%） ----------
+	[Export(PropertyHint.Range, "0.0,1.0")] public float BaseEliteChance { get; set; } = 0.05f;
+	[Export(PropertyHint.Range, "0.0,0.1")] public float EliteChancePerFloor { get; set; } = 0.02f;
+	[Export(PropertyHint.Range, "0.0,1.0")] public float MaxEliteChance { get; set; } = 0.25f;
 
 	// ---------- 数据 ----------
 
@@ -294,6 +299,17 @@ public partial class DungeonPlayable : Node2D
 
 	public void Generate()
 	{
+		// 第 12 课：消费商店的测试跳层（>0 时覆盖起始层；消费即清零——出口/死亡流程不受影响）
+		bool debugJump = false;
+		var gameData = GetNodeOrNull<GameData>("/root/GameData");
+		if (gameData != null && gameData.DebugStartFloor > 0)
+		{
+			FloorNumber = gameData.DebugStartFloor;
+			gameData.DebugStartFloor = 0;
+			debugJump = true;
+			GD.Print($"【测试】跳层进入：第 {FloorNumber} 层");
+		}
+
 		// 防止地图太小
 		MapWidth = Mathf.Max(20, MapWidth);
 		MapHeight = Mathf.Max(16, MapHeight);
@@ -344,6 +360,25 @@ public partial class DungeonPlayable : Node2D
 		{
 			GD.Print("入口：", EntranceCell, "  出口：", ExitCell);
 			GD.Print("钥匙：", KeyCell, "  宝箱数：", TreasureCells.Count, "  怪物数：", MonsterCells.Count);
+		}
+
+		// 测试跳层：报告本图精英数（不用满图找——没精英再跳一次即可）
+		if (debugJump)
+		{
+			int eliteTotal = 0;
+			int monsterTotal = 0;
+			foreach (Node e in _dynamicEntities)
+			{
+				if (e is Enemy enemy)
+				{
+					monsterTotal++;
+					if (enemy.IsElite)
+					{
+						eliteTotal++;
+					}
+				}
+			}
+			GD.Print($"【测试】本层怪物 {monsterTotal} 只，其中精英 {eliteTotal} 只（25%/只——没刷出再跳一次）");
 		}
 	}
 
@@ -1408,26 +1443,22 @@ public partial class DungeonPlayable : Node2D
 	private void SpawnMonsterAtCell(Vector2I cell)
 	{
 		// 第 5 课：实例化巡逻敌人（Setup 注入地图引用 + 巡逻路径）
+		// 第 12 课：配置流——Main 决定类型/层数成长/精英，ApplyConfig 一次灌入
 		if (EnemyScene != null)
 		{
 			var enemy = EnemyScene.Instantiate<CharacterBody2D>();
 
 			if (enemy is Enemy e)
 			{
+				var config = CreateEnemyConfig();
+
 				AddChild(e);
 
+				// 类型先行（TypeColor 配色依赖）→ 定位 → Setup（基础模板+个体差异）→ ApplyConfig（最终覆盖）
+				e.EnemyType = config.Name;
 				e.GlobalPosition = GetCellWorldPosition(cell);
-
-				// 作业 3（第 6 课）：加权随机分配类型（60% 普通 / 25% 敏捷 / 15% 坦克）
-				float roll = _rng.Randf();
-				e.EnemyType = roll switch
-				{
-					< 0.60f => "normal",
-					< 0.85f => "fast",
-					_ => "tank",
-				};
-
 				e.Setup(this, MakePatrolPoints(cell));
+				e.ApplyConfig(config);
 
 				_dynamicEntities.Add(e);
 				return;
@@ -1437,6 +1468,135 @@ public partial class DungeonPlayable : Node2D
 		// 回退：未配置敌人场景时用旧版危险区（保底不断更）
 		GD.PushWarning("EnemyScene 未设置，怪物回退为危险区。");
 		CreateHazardArea(cell);
+	}
+
+	// =========================
+	// 第 12 课：敌人类型配置流（文档 grunt/runner/brute ≙ 仓库 normal/fast/tank）
+	// =========================
+
+	private EnemyConfig CreateEnemyConfig()
+	{
+		// 流水线：类型模板 → 层数成长 → 精英判定（命中再叠强化）
+		var config = GetEnemyTypeConfig(PickEnemyType());
+
+		ApplyFloorScaling(config);
+
+		if (_rng.Randf() < GetEliteChance())
+		{
+			ApplyEliteConfig(config);
+		}
+
+		return config;
+	}
+
+	private string PickEnemyType()
+	{
+		// 按层数解锁（第 1 层只有普通怪——让玩家先学会读威胁，再逐步加新面孔）
+		var pool = new List<string> { "normal" };
+
+		if (FloorNumber >= 2)
+		{
+			pool.Add("fast");
+		}
+
+		if (FloorNumber >= 3)
+		{
+			pool.Add("tank");
+		}
+
+		return pool[_rng.RandiRange(0, pool.Count - 1)];
+	}
+
+	private static EnemyConfig GetEnemyTypeConfig(string type)
+	{
+		// 类型模板（数值承接第 6/7 课平衡：追击倍率 1.15 保全员低于玩家 140 可风筝；
+		// 掉落换算自第 6 课差异化掉率：fast 0.7×0.7≈0.5 / tank 1.45×0.7≈1.0 必掉）
+		switch (type)
+		{
+			case "fast":
+				return new EnemyConfig
+				{
+					Name = "fast",
+					SizeScale = 0.85f,
+					MaxHealth = 1,
+					Speed = 110.0f,
+					ContactDamage = 1,
+					DetectionRange = 110.0f,
+					LoseRange = 170.0f,
+					ChaseSpeedMultiplier = 1.15f,
+					CollisionRadius = 3.5f,
+					DropCount = 1,
+					DropChanceMultiplier = 0.7f,
+					PotionChanceBonus = -0.25f,
+				};
+			case "tank":
+				return new EnemyConfig
+				{
+					Name = "tank",
+					SizeScale = 1.35f,
+					MaxHealth = 4,
+					Speed = 45.0f,
+					ContactDamage = 2,
+					DetectionRange = 70.0f,
+					LoseRange = 120.0f,
+					ChaseSpeedMultiplier = 1.15f,
+					CollisionRadius = 5.0f,
+					DropCount = 1,
+					DropChanceMultiplier = 1.45f,
+					PotionChanceBonus = 0.35f,
+				};
+			default:
+				return new EnemyConfig
+				{
+					Name = "normal",
+					SizeScale = 1.0f,
+					MaxHealth = 2,
+					Speed = 70.0f,
+					ContactDamage = 1,
+					DetectionRange = 90.0f,
+					LoseRange = 150.0f,
+					ChaseSpeedMultiplier = 1.15f,
+					CollisionRadius = 4.0f,
+					DropCount = 1,
+					DropChanceMultiplier = 1.0f,
+					PotionChanceBonus = 0.0f,
+				};
+		}
+	}
+
+	private void ApplyFloorScaling(EnemyConfig config)
+	{
+		// 层数成长：血 +1/2层、伤 +1/4层（轻微——大头交给商店升级与精英）
+		int bonusHealth = (FloorNumber - 1) / 2;
+		int bonusDamage = (FloorNumber - 1) / 4;
+
+		config.MaxHealth += bonusHealth;
+		config.ContactDamage += bonusDamage;
+	}
+
+	private float GetEliteChance()
+	{
+		return Mathf.Clamp(
+			BaseEliteChance + EliteChancePerFloor * FloorNumber,
+			0.0f, MaxEliteChance);
+	}
+
+	private static void ApplyEliteConfig(EnemyConfig config)
+	{
+		// 精英贴膜：血 ×3 / 伤 +1 / 速 ×1.1 / 检测 ×1.2 / 更大更金 / 掉落全面强化
+		config.IsElite = true;
+
+		config.SizeScale *= 1.25f;
+
+		config.MaxHealth *= 3;
+		config.ContactDamage += 1;
+		config.Speed *= 1.1f;
+
+		config.DetectionRange *= 1.2f;
+
+		config.DropCount += 1;
+		config.DropChanceMultiplier *= 1.5f;
+		config.PotionChanceBonus += 0.15f;
 	}
 
 	private void CreateHazardArea(Vector2I cell)
@@ -1548,40 +1708,44 @@ public partial class DungeonPlayable : Node2D
 
 	public void OnEnemyDied(Node enemy, Vector2 deathPosition)
 	{
-		// 作业 4（第 6 课）：差异化掉落——按敌人类型决定掉率与掉落表
+		// 敌人死亡：移出清单 + 运行期掉落判定（_rng 消耗在 Generate 重置种子后，不影响复现）
 		RemoveDynamicEntity(enemy);
 
-		float dropChance = EnemyDropChance;
-		float potionChance = EnemyPotionChance;
+		// 第 12 课：掉落由敌人属性驱动（类型模板 + 精英强化已折算进这三个字段）
+		int dropCount = 1;
+		float dropChanceMultiplier = 1.0f;
+		float potionBonus = 0.0f;
 
-		string etype = enemy.Get("enemy_type").ToString();
-		switch (etype)
+		if (enemy is Enemy typed)
 		{
-			case "fast":
-				// 敏捷怪：掉率低但必掉金币（跑得快击杀难，奖励集中）
-				dropChance = 0.5f;
-				potionChance = 0.0f;
-				break;
-			case "tank":
-				// 坦克怪：必掉且高概率药水（硬仗厚奖）
-				dropChance = 1.0f;
-				potionChance = 0.6f;
-				break;
+			dropCount = typed.DropCount;
+			dropChanceMultiplier = typed.DropChanceMultiplier;
+			potionBonus = typed.PotionChanceBonus;
 		}
 
-		if (_rng.Randf() < dropChance)
+		float dropChance = Mathf.Clamp(EnemyDropChance * dropChanceMultiplier, 0.0f, 1.0f);
+
+		if (_rng.Randf() >= dropChance)
 		{
-			SpawnDropAtPosition(deathPosition, potionChance);
+			return;
+		}
+
+		int amount = Mathf.Max(1, dropCount);
+
+		for (int i = 0; i < amount; i++)
+		{
+			var offset = new Vector2(
+				_rng.RandfRange(-8.0f, 8.0f),
+				_rng.RandfRange(-8.0f, 8.0f));
+
+			SpawnDropAtPosition(deathPosition + offset, potionBonus);
 		}
 	}
 
-	private void SpawnDropAtPosition(Vector2 worldPosition, float potionChance = -1.0f)
+	private void SpawnDropAtPosition(Vector2 worldPosition, float potionBonus = 0.0f)
 	{
-		// potionChance < 0 时用全局默认（保持文档版调用兼容）
-		if (potionChance < 0.0f)
-		{
-			potionChance = EnemyPotionChance;
-		}
+		// 第 12 课：药水概率 = 全局基准 + 敌人加成（fast 负加成 → 永远金币；tank/精英 → 高药水率）
+		float potionChance = Mathf.Clamp(EnemyPotionChance + potionBonus, 0.0f, 1.0f);
 
 		string dropType = _rng.Randf() < potionChance ? "potion" : "gold";
 

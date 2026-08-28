@@ -128,6 +128,20 @@ public partial class Enemy : CharacterBody2D
 	private Sprite2D _sprite;
 	private Sprite2D _alert;
 
+	// 作业 1+2（第 12 课）：精英星标 + 受击血条（GetNodeOrNull——场景缺节点不崩）
+	private Sprite2D _eliteStar;
+	private ColorRect _healthBar;
+	private ColorRect _healthBarFill;
+
+	// 第 12 课：精英标记（任何类型的强化贴膜——金色 lerp + 体型 ×1.25 + 属性强化）
+	public bool IsElite { get; set; }
+	// 体型系数（呼吸动画每帧乘它——直接设 Scale 会被 _Process 覆盖）
+	public float SizeScale { get; set; } = 1.0f;
+	// 掉落属性（Main 的 OnEnemyDied 消费——差异化掉落由数据驱动）
+	public int DropCount { get; set; } = 1;
+	public float DropChanceMultiplier { get; set; } = 1.0f;
+	public float PotionChanceBonus { get; set; }
+
 	private static readonly System.Random RuntimeRand = new();
 
 	private static float RandRange(float min, float max)
@@ -139,6 +153,9 @@ public partial class Enemy : CharacterBody2D
 	{
 		_sprite = GetNode<Sprite2D>("Sprite2D");
 		_alert = GetNodeOrNull<Sprite2D>("Alert");
+		_eliteStar = GetNodeOrNull<Sprite2D>("EliteStar");
+		_healthBar = GetNodeOrNull<ColorRect>("HealthBar");
+		_healthBarFill = GetNodeOrNull<ColorRect>("HealthBar/Fill");
 	}
 
 	public override void _Process(double delta)
@@ -162,10 +179,16 @@ public partial class Enemy : CharacterBody2D
 
 		_t += dt * rate;
 		float s = 1.0f + amp * Mathf.Sin(_t * 3.0f);
-		_sprite.Scale = new Vector2(s, s);
+		// 第 12 课：体型系数乘进呼吸动画（精英 ×1.25——直接设 Scale 会被本行每帧覆盖）
+		_sprite.Scale = new Vector2(s, s) * SizeScale;
 
 		// modulate 四态协调（作业 1：受击红 > 追击粉 > 返回蓝 > 类型基色）
 		Color baseColor = TypeColor.TryGetValue(EnemyType, out Color c) ? c : Colors.White;
+		// 第 12 课：精英金色渗染（45% 向金色 lerp——四态变色逻辑不变，只改基色）
+		if (IsElite)
+		{
+			baseColor = baseColor.Lerp(new Color(1.0f, 0.85f, 0.3f), 0.45f);
+		}
 		if (_flashT > 0.0f)
 		{
 			_flashT -= dt;
@@ -189,6 +212,12 @@ public partial class Enemy : CharacterBody2D
 		{
 			_alertT -= dt;
 			_alert.Visible = _alertT > 0.0f;
+		}
+
+		// 作业 1（第 12 课）：精英星标常驻（每帧同步——星标位置高于 Alert 不打架）
+		if (_eliteStar != null)
+		{
+			_eliteStar.Visible = IsElite;
 		}
 
 		// 张望：等待中偶尔左右瞥一眼（身体微偏移模拟探头）
@@ -280,6 +309,63 @@ public partial class Enemy : CharacterBody2D
 		_waitRemaining = 0.0f;
 	}
 
+	// 第 12 课：Main 配置流最终覆盖——在 Setup（基础模板 + 个体差异）之后调用，
+	// 拥有最后决定权（层数成长 / 精英强化都已折算进 config）
+	public void ApplyConfig(EnemyConfig config)
+	{
+		EnemyType = config.Name;
+		IsElite = config.IsElite;
+
+		MaxHealth = config.MaxHealth;
+		Health = MaxHealth;
+
+		Speed = config.Speed;
+		ContactDamage = config.ContactDamage;
+
+		DetectionRange = config.DetectionRange;
+		LoseRange = config.LoseRange;
+		ChaseSpeedMultiplier = config.ChaseSpeedMultiplier;
+
+		CollisionRadius = config.CollisionRadius;
+
+		DropCount = config.DropCount;
+		DropChanceMultiplier = config.DropChanceMultiplier;
+		PotionChanceBonus = config.PotionChanceBonus;
+
+		SizeScale = config.SizeScale;
+
+		// 精英碰撞体微放大（上限 6：16px 走廊不卡死）
+		if (IsElite)
+		{
+			CollisionRadius = Mathf.Min(CollisionRadius * 1.15f, 6.0f);
+		}
+
+		// Setup 的个体差异已被上面覆盖——按最终速度重掷（运行期随机源，保持群体不齐步）
+		Speed *= RandRange(0.85f, 1.15f);
+		_chaseSpeed = Speed * ChaseSpeedMultiplier;
+
+		UpdateHealthBar();
+	}
+
+	// 作业 2（第 12 课）：满血/死亡隐藏，受伤才显示（一眼读出"这怪打过几下"）
+	private void UpdateHealthBar()
+	{
+		if (_healthBar == null || _healthBarFill == null)
+		{
+			return;
+		}
+
+		if (Dead || Health <= 0 || Health >= MaxHealth)
+		{
+			_healthBar.Visible = false;
+			return;
+		}
+
+		_healthBar.Visible = true;
+		_healthBarFill.Scale = _healthBarFill.Scale with { X = Mathf.Clamp((float)Health / MaxHealth, 0.0f, 1.0f) };
+	}
+
+
 	private void ApplyTypeTemplate()
 	{
 		// 类型模板 + 第 7 课参数（detection/lose_range）
@@ -322,6 +408,8 @@ public partial class Enemy : CharacterBody2D
 		Health -= amount;
 
 		GD.Print("敌人受击，剩余生命：", Health);
+
+		UpdateHealthBar();
 
 		if (Health <= 0)
 		{
@@ -924,4 +1012,28 @@ public partial class Enemy : CharacterBody2D
 
 		return true;
 	}
+}
+
+// =========================
+// 第 12 课：敌人类型配置（C# 用强类型类表达"基因"——与 GD 版 Dictionary 字段一一对应：
+// name/is_elite/size_scale/max_health/speed/contact_damage/detection_range/lose_range/
+// chase_speed_multiplier/collision_radius/drop_count/drop_chance_multiplier/potion_chance_bonus）
+// =========================
+public class EnemyConfig
+{
+	public string Name = "normal";
+	public bool IsElite;
+	public float SizeScale = 1.0f;
+
+	public int MaxHealth = 2;
+	public float Speed = 70.0f;
+	public int ContactDamage = 1;
+	public float DetectionRange = 90.0f;
+	public float LoseRange = 150.0f;
+	public float ChaseSpeedMultiplier = 1.15f;
+	public float CollisionRadius = 4.0f;
+
+	public int DropCount = 1;
+	public float DropChanceMultiplier = 1.0f;
+	public float PotionChanceBonus;
 }
